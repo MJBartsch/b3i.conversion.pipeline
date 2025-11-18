@@ -1,0 +1,75 @@
+Target Keyword: [Your main keyword]
+Target Geo: [UK/US/etc]
+SEO Metadata
+URL Slug:
+/[your-url-slug]/
+Meta Title (58 characters):
+[Your SEO-optimized title under 60 chars]
+Meta Description (155 characters):
+[Your SEO-optimized description under 160 characters]
+Notes for MJ:
+[Implementation notes, special requirements, etc]
+
+Content
+[Main Page Heading] (h1)
+[Introduction paragraph - this will use the "intro" CSS class and appear in the article header]
+
+[Optional: Important Notice/Disclaimer Heading] (disclaimer box)
+[Section Title:]
+[Content for this disclaimer section]
+[Use bullet points with • for lists]
+
+[Second Major Section] (h2)
+csv
+[If you have a comparison table, use CSV format]
+[Column1,Column2,Column3]
+[Value1,Value2,Value3]
+[etc]
+
+[Platform Review Section] (h2)
+
+1. [Platform Name] - [Tagline/Description] (h3)
+[Introduction paragraph about this platform]
+
+Pros:
+•	[Advantage 1]
+•	[Advantage 2]
+•	[Advantage 3]
+
+Cons:
+•	[Disadvantage 1]
+•	[Disadvantage 2]
+
+[Platform Feature]: [Details about this feature]
+[UKGC Compliance]: [Compliance details]
+
+Verdict: [Your verdict/conclusion about this platform]
+
+2. [Next Platform Name] - [Tagline] (h3)
+[Continue same pattern...]
+
+[Another Standard Section] (h2)
+[Regular paragraph content]
+
+[You can include subsections] (h3)
+[Subsection content with lists:]
+•	[List item 1]
+•	[List item 2]
+
+[Frequently Asked Questions] (h2)
+
+[First question?] (h3)
+[Answer to first question]
+
+[Second question?] (h3)
+[Answer to second question]
+
+[Final Verdict/Conclusion Section] (h2)
+[Concluding paragraphs]
+[Summary of key points]
+
+Featured image:
+[Image description or URL]
+
+SEO Title: [Featured image SEO title]
+ALT Tag: [Image alt text for accessibility and SEO]
