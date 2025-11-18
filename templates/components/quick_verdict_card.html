@@ -1,0 +1,32 @@
+<div class="qv-category{featured_class}" role="article" aria-labelledby="{platform_id}-title">
+    <div class="qv-category-header">
+        <span class="qv-category-label">{category_label}</span>
+        <h3 class="qv-category-title">{category_title}</h3>
+    </div>
+    <div class="qv-category-body">
+        <div class="qv-platform-logo">
+            <img src="{logo_url}" alt="{platform_name} logo" width="90" height="90" loading="eager" />
+        </div>
+        <div class="qv-winner-link">
+            <h4 id="{platform_id}-title" class="qv-winner-name">
+                {platform_name}
+                <div class="qv-winner-rating">
+                    <span class="qv-rating-stars" role="img" aria-label="{rating_text}">
+                        {rating_stars}
+                    </span>
+                    <span class="rating-value" aria-hidden="true">{rating_value}</span>
+                </div>
+            </h4>
+            <ul class="qv-winner-features">
+                {features_list}
+            </ul>
+            <span class="qv-highlight-badge">{badge_text}</span>
+        </div>
+    </div>
+    <div class="qv-category-footer">
+        <a href="#{review_anchor}" class="qv-view-details" aria-label="View full review of {platform_name}">
+            View full review
+            <span class="qv-arrow" aria-hidden="true">→</span>
+        </a>
+    </div>
+</div>
