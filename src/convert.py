@@ -18,7 +18,7 @@ from typing import Dict, List
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.content_parser import parse_document
-from src.html_generator import HTMLGenerator
+from src.html_generator_v2 import HTMLGeneratorV2 as HTMLGenerator
 from src.content_enhancer import ContentEnhancer
 
 
