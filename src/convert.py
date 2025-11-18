@@ -18,12 +18,34 @@ from typing import Dict, List
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.content_parser import parse_document
-from src.html_generator_v2 import HTMLGeneratorV2 as HTMLGenerator
+from src.page_builder import PageBuilder
 from src.content_enhancer import ContentEnhancer
 
 
+def load_data_files():
+    """Load images and affiliate links from JSON files"""
+    images = {}
+    affiliate_links = {}
+
+    # Load images.json
+    images_path = Path('data/images.json')
+    if images_path.exists():
+        with open(images_path, 'r', encoding='utf-8') as f:
+            images_data = json.load(f)
+            images = {img['title']: img for img in images_data}
+
+    # Load affiliate-links.json
+    links_path = Path('data/affiliate-links.json')
+    if links_path.exists():
+        with open(links_path, 'r', encoding='utf-8') as f:
+            links_data = json.load(f)
+            affiliate_links = {link['casino_name']: link for link in links_data}
+
+    return images, affiliate_links
+
+
 def extract_platform_names(document: Dict) -> list:
-    """Extract platform names from document for image/link matching"""
+    """Extract platform names from document for internal linking"""
     platform_names = []
 
     for section in document.get('sections', []):
@@ -49,28 +71,27 @@ def convert_document(input_file: str, output_file: str = None) -> str:
     # Default output file if not specified
     if not output_file:
         input_path = Path(input_file)
-        output_file = f"output/{input_path.stem}.html"
+        output_file = f"converted_files/{input_path.stem}.html"
 
     print(f"Converting: {input_file} -> {output_file}")
 
-    # Step 1: Parse the document
-    print("  [1/4] Parsing document...")
+    # Step 1: Load data files
+    print("  [1/4] Loading data files...")
+    images, affiliate_links = load_data_files()
+    print(f"        Loaded {len(images)} images and {len(affiliate_links)} affiliate links")
+
+    # Step 2: Parse the document
+    print("  [2/4] Parsing document...")
     document = parse_document(input_file)
 
-    # Step 2: Generate HTML
-    print("  [2/4] Generating HTML...")
-    generator = HTMLGenerator()
-    html = generator.generate_full_page(document)
+    # Step 3: Build HTML with PageBuilder
+    print("  [3/4] Building HTML with structured sections...")
+    page_builder = PageBuilder()
+    html = page_builder.build_platform_comparison_page(document, images, affiliate_links)
 
-    # Step 3: Extract platform names for enhancement
-    print("  [3/4] Extracting platform names...")
-    platform_names = extract_platform_names(document)
-    print(f"        Found {len(platform_names)} platforms: {', '.join(platform_names[:5])}...")
-
-    # Step 4: Enhance HTML with images and affiliate links
-    print("  [4/4] Enhancing HTML (images, affiliate links)...")
-    enhancer = ContentEnhancer()
-    html = enhancer.enhance_html(html, platform_names=platform_names)
+    # Step 4: Add internal linking (optional enhancement) - TODO: implement later
+    print("  [4/4] Finalizing HTML...")
+    # Internal linking can be added later with proper page mapping
 
     # Write output
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -82,7 +103,7 @@ def convert_document(input_file: str, output_file: str = None) -> str:
     return output_file
 
 
-def batch_convert(input_directory: str = 'raw_documents', output_directory: str = 'output'):
+def batch_convert(input_directory: str = 'raw_documents', output_directory: str = 'converted_files'):
     """Convert all documents in a directory"""
     input_path = Path(input_directory)
     output_path = Path(output_directory)
