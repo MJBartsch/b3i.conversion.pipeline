@@ -89,10 +89,15 @@ class PageBuilder:
         metadata = document.get('metadata', {})
         sections = document.get('sections', [])
 
+        # Extract casino info including pros/cons
+        casino_info = self._extract_casino_info(sections)
+        casino_info.update(self._extract_pros_cons(sections))
+
         content_map = {
             'metadata': metadata,
             'article_header': self._extract_article_header(sections),
-            'casino_info': self._extract_casino_info(sections),
+            'casino_info': casino_info,
+            'tab_content': self._extract_tab_content(sections),
             'content_sections': sections,  # All sections for flexible rendering
             'faqs': self._extract_faqs(sections),
             'references': self._extract_references(sections)
@@ -1048,6 +1053,100 @@ class PageBuilder:
 
         return casino_info
 
+    def _extract_pros_cons(self, sections: List[Dict]) -> Dict:
+        """Extract pros and cons from the pros/cons section"""
+        pros = []
+        cons = []
+
+        for section in sections:
+            heading = section.get('heading', '')
+            content = section.get('content', '')
+
+            # Look for pros/cons table
+            if ('Pros' in heading and 'Cons' in heading) or 'Pros and Cons' in heading:
+                # Check if it's a tab-delimited table
+                if '\t' in content:
+                    lines = [l.strip() for l in content.split('\n') if l.strip() and '\t' in l]
+                    for line in lines[1:]:  # Skip header
+                        columns = [c.strip() for c in line.split('\t')]
+                        if len(columns) >= 2:
+                            if columns[0]:
+                                pros.append(columns[0])
+                            if columns[1]:
+                                cons.append(columns[1])
+                break
+
+        return {'pros': pros, 'cons': cons}
+
+    def _extract_tab_content(self, sections: List[Dict]) -> Dict:
+        """Extract content for platform card tabs"""
+        tab_content = {
+            'overview': '',
+            'bonuses': '',
+            'games': '',
+        }
+
+        overview_sections = []
+        bonus_sections = []
+        game_sections = []
+
+        for section in sections:
+            heading = section.get('heading', '').lower()
+            content = section.get('content', '')
+            level = section.get('level', 2)
+
+            # Skip very early sections (header) and late sections (FAQ, references)
+            if level == 1 or any(skip in heading for skip in ['faq', 'frequentlyasked', 'reference', 'citation']):
+                continue
+
+            # Skip if content is empty or has tables
+            if not content or '\t' in content:
+                continue
+
+            # If content has image metadata, extract text before the metadata
+            if self._has_image_metadata(content):
+                # Split by image metadata markers
+                parts = content.split('Alt Text:')
+                if parts and len(parts[0].strip()) > 50:
+                    content = parts[0].strip()
+                else:
+                    continue
+
+            # Clean the content - remove separator lines and extra whitespace
+            content = content.replace('________________________________________', '').strip()
+
+            # Skip if content is too short after cleaning
+            if len(content) < 50:
+                continue
+
+            # Overview content - early general sections
+            if any(keyword in heading for keyword in ['safe', 'legit', 'license', 'overview', 'about']):
+                overview_sections.append(content)
+
+            # Bonus content
+            elif any(keyword in heading for keyword in ['bonus', 'welcome', 'promotion', 'offer', 'wagering']):
+                # Skip sports betting sections in bonuses
+                if 'sport' not in heading:
+                    bonus_sections.append(content)
+
+            # Game content
+            elif any(keyword in heading for keyword in ['game', 'slot', 'live', 'rtp', 'provider', 'software']):
+                # Skip FAQ sections about games
+                if 'can i play' not in heading and 'for free' not in heading:
+                    game_sections.append(content)
+
+        # Combine sections into tab content with cleaned text
+        if overview_sections:
+            tab_content['overview'] = '<p>' + '</p>\n<p>'.join(overview_sections[:3]) + '</p>'  # First 3 sections
+
+        if bonus_sections:
+            tab_content['bonuses'] = '<p>' + '</p>\n<p>'.join(bonus_sections[:3]) + '</p>'
+
+        if game_sections:
+            tab_content['games'] = '<p>' + '</p>\n<p>'.join(game_sections[:3]) + '</p>'
+
+        return tab_content
+
     # ===== Single Casino Review Section Builders =====
 
     def _build_single_quick_verdict_section(self, content_map: Dict, document: Dict) -> str:
@@ -1078,6 +1177,11 @@ class PageBuilder:
         casino_name = casino_info.get('name', 'Casino')
         rating = casino_info.get('rating', '0/10')
         platform_id = self._slugify(casino_name)
+
+        # Get tab content and pros/cons
+        tab_content = content_map.get('tab_content', {})
+        pros = casino_info.get('pros', [])
+        cons = casino_info.get('cons', [])
 
         # Extract rating number for stars
         try:
@@ -1112,32 +1216,63 @@ class PageBuilder:
         html += '        </div>\n\n'
 
         html += '        <div class="tab-content">\n'
+
+        # Overview Tab
         html += f'            <div class="tab-pane active" id="{platform_id}-overview">\n'
         html += f'                <h3>About {self._escape_html(casino_name)}</h3>\n'
-        html += '                <p>Detailed casino review information...</p>\n'
+        overview_content = tab_content.get('overview', '')
+        if overview_content:
+            html += f'                {overview_content}\n'
+        else:
+            html += f'                <p>{self._escape_html(casino_name)} is a licensed online casino offering a wide range of games and features.</p>\n'
         html += '            </div>\n'
+
+        # Bonuses Tab
         html += f'            <div class="tab-pane" id="{platform_id}-bonuses">\n'
         html += '                <h3>Bonuses & Promotions</h3>\n'
+        bonus_content = tab_content.get('bonuses', '')
+        if bonus_content:
+            html += f'                {bonus_content}\n'
+        else:
+            html += '                <p>Check the casino website for current welcome bonus and promotional offers.</p>\n'
         html += '            </div>\n'
+
+        # Games Tab
         html += f'            <div class="tab-pane" id="{platform_id}-games">\n'
         html += '                <h3>Game Selection</h3>\n'
+        games_content = tab_content.get('games', '')
+        if games_content:
+            html += f'                {games_content}\n'
+        else:
+            html += '                <p>Wide selection of slots, table games, and live casino options available.</p>\n'
         html += '            </div>\n'
+
+        # Pros & Cons Tab
         html += f'            <div class="tab-pane" id="{platform_id}-proscons">\n'
         html += '                <div class="proscons-grid">\n'
         html += '                    <div class="pros-section">\n'
         html += '                        <h4><span aria-hidden="true">✓</span> Pros</h4>\n'
         html += '                        <ul class="pros-list">\n'
-        html += '                            <li>Licensed and regulated</li>\n'
+        if pros:
+            for pro in pros:
+                html += f'                            <li>{self._escape_html(pro)}</li>\n'
+        else:
+            html += '                            <li>Licensed and regulated</li>\n'
         html += '                        </ul>\n'
         html += '                    </div>\n'
         html += '                    <div class="cons-section">\n'
         html += '                        <h4><span aria-hidden="true">✗</span> Cons</h4>\n'
         html += '                        <ul class="cons-list">\n'
-        html += '                            <li>Varies by region</li>\n'
+        if cons:
+            for con in cons:
+                html += f'                            <li>{self._escape_html(con)}</li>\n'
+        else:
+            html += '                            <li>Terms and conditions apply</li>\n'
         html += '                        </ul>\n'
         html += '                    </div>\n'
         html += '                </div>\n'
         html += '            </div>\n'
+
         html += '        </div>\n'
         html += '    </div>\n\n'
 
