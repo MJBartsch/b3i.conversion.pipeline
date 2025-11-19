@@ -1176,10 +1176,19 @@ class PageBuilder:
                     html += f'    <h3>{self._escape_html(heading)}</h3>\n'
 
                 if content:
-                    # Simple paragraph rendering for now
-                    paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
-                    for para in paragraphs:
-                        html += f'    <p>{self._escape_html(para)}</p>\n'
+                    # Check if content contains a table
+                    if self._has_inline_table(content):
+                        table_html = self._render_inline_table(content, heading)
+                        html += table_html
+                    # Check if content contains image metadata
+                    elif self._has_image_metadata(content):
+                        image_html = self._render_image_from_metadata(content)
+                        html += image_html
+                    else:
+                        # Regular paragraph rendering
+                        paragraphs = [p.strip() for p in content.split('\n') if p.strip() and not p.startswith('_')]
+                        for para in paragraphs:
+                            html += f'    <p>{self._escape_html(para)}</p>\n'
 
                 if level == 2:
                     html += '</section>\n\n'
@@ -1415,6 +1424,165 @@ class PageBuilder:
                 .replace('>', '&gt;')
                 .replace('"', '&quot;')
                 .replace("'", '&#39;'))
+
+    def _has_inline_table(self, content: str) -> bool:
+        """Detect if content contains a tab-delimited table"""
+        lines = [l for l in content.split('\n') if l.strip()]
+        if len(lines) < 2:
+            return False
+
+        # Check if lines contain tabs (indicating columns)
+        tab_lines = sum(1 for line in lines if '\t' in line)
+        return tab_lines >= 2  # At least header + 1 data row
+
+    def _render_inline_table(self, content: str, heading: str) -> str:
+        """Render tab-delimited table as HTML"""
+        lines = [l.strip() for l in content.split('\n') if l.strip() and '\t' in l]
+
+        if not lines:
+            return ''
+
+        # Determine table type based on heading
+        is_pros_cons = 'Pros' in heading and 'Cons' in heading
+        is_payment = 'Payment' in heading or 'Method' in heading or 'Deposit' in heading or 'Withdrawal' in heading
+        is_fee = 'Fee' in heading or 'Cost' in heading
+
+        # Choose table class
+        if is_fee or is_payment:
+            table_class = 'fee-table'
+        else:
+            table_class = 'platform-table'
+
+        html = ''
+
+        # For pros/cons table, render as two-column proscons-grid
+        if is_pros_cons:
+            html += '    <div class="proscons-grid">\n'
+
+            # Parse pros and cons
+            pros = []
+            cons = []
+
+            for line in lines[1:]:  # Skip header
+                columns = [c.strip() for c in line.split('\t')]
+                if len(columns) >= 2:
+                    if columns[0]:
+                        pros.append(columns[0])
+                    if columns[1]:
+                        cons.append(columns[1])
+
+            html += '        <div class="pros-section">\n'
+            html += '            <h4><span aria-hidden="true">✓</span> Pros</h4>\n'
+            html += '            <ul class="pros-list">\n'
+            for pro in pros:
+                html += f'                <li>{self._escape_html(pro)}</li>\n'
+            html += '            </ul>\n'
+            html += '        </div>\n'
+
+            html += '        <div class="cons-section">\n'
+            html += '            <h4><span aria-hidden="true">✗</span> Cons</h4>\n'
+            html += '            <ul class="cons-list">\n'
+            for con in cons:
+                html += f'                <li>{self._escape_html(con)}</li>\n'
+            html += '            </ul>\n'
+            html += '        </div>\n'
+            html += '    </div>\n'
+
+            return html
+
+        # Regular table rendering
+        html += f'    <table class="{table_class}">\n'
+
+        # Header row
+        header_line = lines[0]
+        headers = [h.strip() for h in header_line.split('\t')]
+
+        html += '        <thead>\n'
+        html += '            <tr>\n'
+        for header in headers:
+            html += f'                <th scope="col">{self._escape_html(header)}</th>\n'
+        html += '            </tr>\n'
+        html += '        </thead>\n'
+
+        # Data rows
+        html += '        <tbody>\n'
+        for line in lines[1:]:
+            columns = [c.strip() for c in line.split('\t')]
+
+            html += '            <tr class="fee-row">\n'
+            for i, col in enumerate(columns):
+                # First column is row header for fee tables
+                if i == 0 and (is_fee or is_payment):
+                    html += f'                <th scope="row" class="fee-label">{self._escape_html(col)}</th>\n'
+                else:
+                    # Add 'free' class if value indicates no fee
+                    value_class = ''
+                    col_upper = col.upper()
+                    if any(word in col_upper for word in ['FREE', 'INSTANT', 'NONE', '0%']):
+                        value_class = ' free'
+
+                    html += f'                <td class="fee-value{value_class}">{self._escape_html(col)}</td>\n'
+
+            html += '            </tr>\n'
+
+        html += '        </tbody>\n'
+        html += '    </table>\n'
+
+        return html
+
+    def _has_image_metadata(self, content: str) -> bool:
+        """Detect if content contains image metadata block"""
+        return ('Alt Text:' in content or 'File Name:' in content) and not '\t' in content
+
+    def _render_image_from_metadata(self, content: str) -> str:
+        """Extract image metadata and render as figure with img tag"""
+        lines = [l.strip() for l in content.split('\n') if l.strip()]
+
+        alt_text = ''
+        file_name = ''
+        caption = ''
+
+        current_field = None
+        for line in lines:
+            if line.startswith('Alt Text:'):
+                current_field = 'alt'
+                alt_text = line.replace('Alt Text:', '').strip()
+            elif line.startswith('File Name:'):
+                current_field = 'file'
+                file_name = line.replace('File Name:', '').strip()
+            elif line.startswith('Caption:'):
+                current_field = 'caption'
+                caption = line.replace('Caption:', '').strip()
+            elif current_field and not line.endswith(':'):
+                # Continuation of previous field
+                if current_field == 'alt':
+                    alt_text += ' ' + line
+                elif current_field == 'file':
+                    file_name += line
+                elif current_field == 'caption':
+                    caption += ' ' + line
+
+        if not file_name:
+            return ''
+
+        # Build image path (assuming images are in wp-content/uploads)
+        # User can adjust base path as needed
+        image_url = f"/wp-content/uploads/{file_name}"
+
+        html = '    <figure style="margin: 1.5rem 0;">\n'
+        html += f'        <img src="{image_url}" alt="{self._escape_html(alt_text)}" '
+        html += 'style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" loading="lazy" />\n'
+
+        if caption:
+            # Remove separator lines from caption
+            caption = caption.replace('________________________________________', '').strip()
+            if caption:
+                html += f'        <figcaption style="text-align: center; font-size: 0.875rem; color: #6e6e73; margin-top: 0.5rem;">'
+                html += f'{self._escape_html(caption)}</figcaption>\n'
+
+        html += '    </figure>\n'
+
+        return html
 
     def _slugify(self, text: str) -> str:
         """Convert text to URL-safe slug"""
