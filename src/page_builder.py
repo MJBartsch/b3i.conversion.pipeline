@@ -16,6 +16,31 @@ class PageBuilder:
 
         self.template_engine = TemplateEngine()
 
+    def build_page(self, document: Dict[str, Any],
+                   images: Dict = None,
+                   affiliate_links: Dict = None) -> str:
+        """Build a page, auto-detecting the page type"""
+        page_type = self._detect_page_type(document)
+
+        if page_type == 'single_casino_review':
+            return self.build_single_casino_review_page(document, images, affiliate_links)
+        else:
+            return self.build_platform_comparison_page(document, images, affiliate_links)
+
+    def _detect_page_type(self, document: Dict[str, Any]) -> str:
+        """Detect whether this is a comparison page or single casino review"""
+        sections = document.get('sections', [])
+
+        # Check for comparison table or multiple platform reviews
+        has_comparison = any(s.get('type') == 'comparison_table' for s in sections)
+        platform_count = sum(1 for s in sections if s.get('type') == 'platform_review')
+
+        # If multiple platforms or comparison table, it's a comparison page
+        if has_comparison or platform_count > 1:
+            return 'platform_comparison'
+
+        return 'single_casino_review'
+
     def build_platform_comparison_page(self, document: Dict[str, Any],
                                       images: Dict = None,
                                       affiliate_links: Dict = None) -> str:
@@ -36,6 +61,49 @@ class PageBuilder:
 
         # Assemble final page
         return self._assemble_page(document, sections_html)
+
+    def build_single_casino_review_page(self, document: Dict[str, Any],
+                                        images: Dict = None,
+                                        affiliate_links: Dict = None) -> str:
+        """Build a single casino review page"""
+
+        page_type = 'single_casino_review'
+        section_order = self.structure_config['page_types'][page_type]['section_order']
+
+        # Extract and organize content
+        content_map = self._map_single_review_content(document, images, affiliate_links)
+
+        # Build page sections in order
+        sections_html = []
+        for section_name in section_order:
+            section_html = self._build_section(section_name, content_map, document)
+            if section_html:
+                sections_html.append(section_html)
+
+        # Assemble final page
+        return self._assemble_page(document, sections_html)
+
+    def _map_single_review_content(self, document: Dict, images: Dict, affiliate_links: Dict) -> Dict:
+        """Map content for single casino review"""
+
+        metadata = document.get('metadata', {})
+        sections = document.get('sections', [])
+
+        # Extract casino info including pros/cons
+        casino_info = self._extract_casino_info(sections)
+        casino_info.update(self._extract_pros_cons(sections))
+
+        content_map = {
+            'metadata': metadata,
+            'article_header': self._extract_article_header(sections),
+            'casino_info': casino_info,
+            'tab_content': self._extract_tab_content(sections),
+            'content_sections': sections,  # All sections for flexible rendering
+            'faqs': self._extract_faqs(sections),
+            'references': self._extract_references(sections)
+        }
+
+        return content_map
 
     def _map_content_to_sections(self, document: Dict, images: Dict, affiliate_links: Dict) -> Dict:
         """Map parsed document content to template sections"""
@@ -945,6 +1013,344 @@ class PageBuilder:
                 return [{'text': line} for line in lines]
         return []
 
+    def _extract_casino_info(self, sections: List[Dict]) -> Dict:
+        """Extract basic casino information from early sections"""
+        casino_info = {
+            'name': '',
+            'rating': '0/10',
+            'pros': [],
+            'cons': []
+        }
+
+        # Try to extract casino name from title
+        if sections and sections[0].get('level') == 1:
+            title = sections[0].get('heading', '')
+            # Extract casino name from patterns like "Is Casumo Worth It" or "888 Casino Review"
+            import re
+
+            # Try pattern "Is X Worth It"
+            worth_match = re.search(r'Is\s+([A-Z][a-zA-Z0-9\s]+?)\s+Worth', title)
+            if worth_match:
+                casino_info['name'] = worth_match.group(1).strip()
+            # Try pattern "X Review 2025"
+            elif 'Review' in title:
+                casino_info['name'] = re.sub(r'\s+Review.*', '', title).strip()
+                casino_info['name'] = re.sub(r'\s+\d{4}.*', '', casino_info['name']).strip()
+
+        # Look for rating in early sections
+        for section in sections[:10]:
+            content = section.get('content', '')
+            heading = section.get('heading', '')
+
+            # Look for rating pattern like "Overall: 3.6/5" or "6.9/10"
+            import re
+            rating_match = re.search(r'Overall[:\s]+(\d+\.?\d*)/(\d+)', content + ' ' + heading, re.IGNORECASE)
+            if rating_match:
+                score = rating_match.group(1)
+                total = rating_match.group(2)
+                casino_info['rating'] = f"{score}/{total}"
+                break
+
+        return casino_info
+
+    def _extract_pros_cons(self, sections: List[Dict]) -> Dict:
+        """Extract pros and cons from the pros/cons section"""
+        pros = []
+        cons = []
+
+        for section in sections:
+            heading = section.get('heading', '')
+            content = section.get('content', '')
+
+            # Look for pros/cons table
+            if ('Pros' in heading and 'Cons' in heading) or 'Pros and Cons' in heading:
+                # Check if it's a tab-delimited table
+                if '\t' in content:
+                    lines = [l.strip() for l in content.split('\n') if l.strip() and '\t' in l]
+                    for line in lines[1:]:  # Skip header
+                        columns = [c.strip() for c in line.split('\t')]
+                        if len(columns) >= 2:
+                            if columns[0]:
+                                pros.append(columns[0])
+                            if columns[1]:
+                                cons.append(columns[1])
+                break
+
+        return {'pros': pros, 'cons': cons}
+
+    def _extract_tab_content(self, sections: List[Dict]) -> Dict:
+        """Extract content for platform card tabs"""
+        tab_content = {
+            'overview': '',
+            'bonuses': '',
+            'games': '',
+        }
+
+        overview_sections = []
+        bonus_sections = []
+        game_sections = []
+
+        for section in sections:
+            heading = section.get('heading', '').lower()
+            content = section.get('content', '')
+            level = section.get('level', 2)
+
+            # Skip very early sections (header) and late sections (FAQ, references)
+            if level == 1 or any(skip in heading for skip in ['faq', 'frequentlyasked', 'reference', 'citation']):
+                continue
+
+            # Skip if content is empty or has tables
+            if not content or '\t' in content:
+                continue
+
+            # If content has image metadata, extract text before the metadata
+            if self._has_image_metadata(content):
+                # Split by image metadata markers
+                parts = content.split('Alt Text:')
+                if parts and len(parts[0].strip()) > 50:
+                    content = parts[0].strip()
+                else:
+                    continue
+
+            # Clean the content - remove separator lines and extra whitespace
+            content = content.replace('________________________________________', '').strip()
+
+            # Skip if content is too short after cleaning
+            if len(content) < 50:
+                continue
+
+            # Overview content - early general sections
+            if any(keyword in heading for keyword in ['safe', 'legit', 'license', 'overview', 'about']):
+                overview_sections.append(content)
+
+            # Bonus content
+            elif any(keyword in heading for keyword in ['bonus', 'welcome', 'promotion', 'offer', 'wagering']):
+                # Skip sports betting sections in bonuses
+                if 'sport' not in heading:
+                    bonus_sections.append(content)
+
+            # Game content
+            elif any(keyword in heading for keyword in ['game', 'slot', 'live', 'rtp', 'provider', 'software']):
+                # Skip FAQ sections about games
+                if 'can i play' not in heading and 'for free' not in heading:
+                    game_sections.append(content)
+
+        # Combine sections into tab content with cleaned text
+        if overview_sections:
+            tab_content['overview'] = '<p>' + '</p>\n<p>'.join(overview_sections[:3]) + '</p>'  # First 3 sections
+
+        if bonus_sections:
+            tab_content['bonuses'] = '<p>' + '</p>\n<p>'.join(bonus_sections[:3]) + '</p>'
+
+        if game_sections:
+            tab_content['games'] = '<p>' + '</p>\n<p>'.join(game_sections[:3]) + '</p>'
+
+        return tab_content
+
+    # ===== Single Casino Review Section Builders =====
+
+    def _build_single_quick_verdict_section(self, content_map: Dict, document: Dict) -> str:
+        """Build quick verdict for single casino review"""
+        casino_info = content_map.get('casino_info', {})
+        casino_name = casino_info.get('name', 'This Casino')
+        rating = casino_info.get('rating', '0/10')
+
+        html = '<section class="quick-verdict">\n'
+        html += '    <div class="qv-header">\n'
+        html += '        <h2 class="qv-title">Quick Verdict: Should You Play at ' + self._escape_html(casino_name) + '?</h2>\n'
+        html += '        <p class="qv-subtitle">After extensive testing, ' + self._escape_html(casino_name) + ' earns a <strong>' + self._escape_html(rating) + '</strong> rating.</p>\n'
+        html += '        <div class="qv-updated">Last updated: <time datetime="2025-11">November 2025</time></div>\n'
+        html += '    </div>\n'
+        html += '    <div class="qv-trust-signals">\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Licensed & Regulated</div>\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Secure Gaming</div>\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Fair Play Certified</div>\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Responsible Gambling</div>\n'
+        html += '    </div>\n'
+        html += '</section>\n\n'
+
+        return html
+
+    def _build_single_platform_card_section(self, content_map: Dict, document: Dict) -> str:
+        """Build single platform card with tabs"""
+        casino_info = content_map.get('casino_info', {})
+        casino_name = casino_info.get('name', 'Casino')
+        rating = casino_info.get('rating', '0/10')
+        platform_id = self._slugify(casino_name)
+
+        # Get tab content and pros/cons
+        tab_content = content_map.get('tab_content', {})
+        pros = casino_info.get('pros', [])
+        cons = casino_info.get('cons', [])
+
+        # Extract rating number for stars
+        try:
+            rating_num = float(rating.split('/')[0])
+            total_stars = int(rating.split('/')[1])
+            stars = '★' * int(rating_num) + '☆' * (total_stars - int(rating_num))
+        except:
+            stars = '★★★★★☆☆☆☆☆'
+            rating = '0/10'
+
+        html = '<div class="platform-card" id="detailed-review">\n'
+        html += '    <div class="card-header">\n'
+        html += f'        <div class="platform-rating">{stars} {self._escape_html(rating)}</div>\n'
+        html += '        <div class="header-content">\n'
+        html += f'            <p class="platform-tagline">{self._escape_html(casino_name)} • Detailed Review</p>\n'
+        html += '        </div>\n'
+        html += '    </div>\n\n'
+
+        html += '    <div class="stats-bar">\n'
+        html += '        <div class="stat-item">\n'
+        html += '            <div class="stat-label">Rating</div>\n'
+        html += f'            <div class="stat-value highlight">{self._escape_html(rating)}</div>\n'
+        html += '        </div>\n'
+        html += '    </div>\n\n'
+
+        html += '    <div class="tabs-container">\n'
+        html += '        <div class="tab-nav" role="tablist">\n'
+        html += f'            <button class="tab-button active" role="tab" data-tab="{platform_id}-overview" aria-selected="true">Overview</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-bonuses">Bonuses</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-games">Games</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-proscons">Pros & Cons</button>\n'
+        html += '        </div>\n\n'
+
+        html += '        <div class="tab-content">\n'
+
+        # Overview Tab
+        html += f'            <div class="tab-pane active" id="{platform_id}-overview">\n'
+        html += f'                <h3>About {self._escape_html(casino_name)}</h3>\n'
+        overview_content = tab_content.get('overview', '')
+        if overview_content:
+            html += f'                {overview_content}\n'
+        else:
+            html += f'                <p>{self._escape_html(casino_name)} is a licensed online casino offering a wide range of games and features.</p>\n'
+        html += '            </div>\n'
+
+        # Bonuses Tab
+        html += f'            <div class="tab-pane" id="{platform_id}-bonuses">\n'
+        html += '                <h3>Bonuses & Promotions</h3>\n'
+        bonus_content = tab_content.get('bonuses', '')
+        if bonus_content:
+            html += f'                {bonus_content}\n'
+        else:
+            html += '                <p>Check the casino website for current welcome bonus and promotional offers.</p>\n'
+        html += '            </div>\n'
+
+        # Games Tab
+        html += f'            <div class="tab-pane" id="{platform_id}-games">\n'
+        html += '                <h3>Game Selection</h3>\n'
+        games_content = tab_content.get('games', '')
+        if games_content:
+            html += f'                {games_content}\n'
+        else:
+            html += '                <p>Wide selection of slots, table games, and live casino options available.</p>\n'
+        html += '            </div>\n'
+
+        # Pros & Cons Tab
+        html += f'            <div class="tab-pane" id="{platform_id}-proscons">\n'
+        html += '                <div class="proscons-grid">\n'
+        html += '                    <div class="pros-section">\n'
+        html += '                        <h4><span aria-hidden="true">✓</span> Pros</h4>\n'
+        html += '                        <ul class="pros-list">\n'
+        if pros:
+            for pro in pros:
+                html += f'                            <li>{self._escape_html(pro)}</li>\n'
+        else:
+            html += '                            <li>Licensed and regulated</li>\n'
+        html += '                        </ul>\n'
+        html += '                    </div>\n'
+        html += '                    <div class="cons-section">\n'
+        html += '                        <h4><span aria-hidden="true">✗</span> Cons</h4>\n'
+        html += '                        <ul class="cons-list">\n'
+        if cons:
+            for con in cons:
+                html += f'                            <li>{self._escape_html(con)}</li>\n'
+        else:
+            html += '                            <li>Terms and conditions apply</li>\n'
+        html += '                        </ul>\n'
+        html += '                    </div>\n'
+        html += '                </div>\n'
+        html += '            </div>\n'
+
+        html += '        </div>\n'
+        html += '    </div>\n\n'
+
+        html += '    <div class="risk-warning">\n'
+        html += '        <p><strong>18+ Only:</strong> Please gamble responsibly. Visit BeGambleAware.org for support.</p>\n'
+        html += '    </div>\n'
+        html += '</div>\n\n'
+
+        return html
+
+    def _build_content_sections_section(self, content_map: Dict, document: Dict) -> str:
+        """Build general content sections"""
+        sections = content_map.get('content_sections', [])
+        html = ''
+
+        # Skip header, FAQ, and reference sections
+        skip_patterns = ['FAQ', 'Frequently Asked', 'Reference', 'Citation', 'Final Verdict', 'Conclusion']
+
+        for section in sections:
+            heading = section.get('heading', '')
+            content = section.get('content', '')
+            level = section.get('level', 2)
+
+            # Skip if it's a special section we handle elsewhere
+            if any(pattern in heading for pattern in skip_patterns):
+                continue
+
+            # Only render h2 and h3 sections
+            if level in [2, 3]:
+                heading_id = self._slugify(heading)
+
+                if level == 2:
+                    html += f'<section class="content-section" aria-labelledby="{heading_id}">\n'
+                    html += f'    <h2 id="{heading_id}">{self._escape_html(heading)}</h2>\n'
+                elif level == 3:
+                    html += f'    <h3>{self._escape_html(heading)}</h3>\n'
+
+                if content:
+                    # Check if content contains a table
+                    if self._has_inline_table(content):
+                        table_html = self._render_inline_table(content, heading)
+                        html += table_html
+                    # Check if content contains image metadata
+                    elif self._has_image_metadata(content):
+                        image_html = self._render_image_from_metadata(content)
+                        html += image_html
+                    else:
+                        # Regular paragraph rendering
+                        paragraphs = [p.strip() for p in content.split('\n') if p.strip() and not p.startswith('_')]
+                        for para in paragraphs:
+                            html += f'    <p>{self._escape_html(para)}</p>\n'
+
+                if level == 2:
+                    html += '</section>\n\n'
+
+        return html
+
+    def _build_faq_simple_section(self, content_map: Dict, document: Dict) -> str:
+        """Build FAQ section with simple h2/h3 format (no accordion)"""
+        faqs = content_map.get('faqs', [])
+
+        if not faqs:
+            return ''
+
+        html = '<section class="content-section">\n'
+        html += '    <h2>Frequently Asked Questions</h2>\n\n'
+
+        for faq in faqs:
+            question = faq.get('question', '')
+            answer = faq.get('answer', '')
+
+            html += f'    <h3>{self._escape_html(question)}</h3>\n'
+            html += f'    <p>{self._escape_html(answer)}</p>\n\n'
+
+        html += '</section>\n\n'
+
+        return html
+
     # ===== Enhanced rendering methods for better visual styling =====
 
     def _is_checklist_section(self, content: str) -> bool:
@@ -1153,6 +1559,165 @@ class PageBuilder:
                 .replace('>', '&gt;')
                 .replace('"', '&quot;')
                 .replace("'", '&#39;'))
+
+    def _has_inline_table(self, content: str) -> bool:
+        """Detect if content contains a tab-delimited table"""
+        lines = [l for l in content.split('\n') if l.strip()]
+        if len(lines) < 2:
+            return False
+
+        # Check if lines contain tabs (indicating columns)
+        tab_lines = sum(1 for line in lines if '\t' in line)
+        return tab_lines >= 2  # At least header + 1 data row
+
+    def _render_inline_table(self, content: str, heading: str) -> str:
+        """Render tab-delimited table as HTML"""
+        lines = [l.strip() for l in content.split('\n') if l.strip() and '\t' in l]
+
+        if not lines:
+            return ''
+
+        # Determine table type based on heading
+        is_pros_cons = 'Pros' in heading and 'Cons' in heading
+        is_payment = 'Payment' in heading or 'Method' in heading or 'Deposit' in heading or 'Withdrawal' in heading
+        is_fee = 'Fee' in heading or 'Cost' in heading
+
+        # Choose table class
+        if is_fee or is_payment:
+            table_class = 'fee-table'
+        else:
+            table_class = 'platform-table'
+
+        html = ''
+
+        # For pros/cons table, render as two-column proscons-grid
+        if is_pros_cons:
+            html += '    <div class="proscons-grid">\n'
+
+            # Parse pros and cons
+            pros = []
+            cons = []
+
+            for line in lines[1:]:  # Skip header
+                columns = [c.strip() for c in line.split('\t')]
+                if len(columns) >= 2:
+                    if columns[0]:
+                        pros.append(columns[0])
+                    if columns[1]:
+                        cons.append(columns[1])
+
+            html += '        <div class="pros-section">\n'
+            html += '            <h4><span aria-hidden="true">✓</span> Pros</h4>\n'
+            html += '            <ul class="pros-list">\n'
+            for pro in pros:
+                html += f'                <li>{self._escape_html(pro)}</li>\n'
+            html += '            </ul>\n'
+            html += '        </div>\n'
+
+            html += '        <div class="cons-section">\n'
+            html += '            <h4><span aria-hidden="true">✗</span> Cons</h4>\n'
+            html += '            <ul class="cons-list">\n'
+            for con in cons:
+                html += f'                <li>{self._escape_html(con)}</li>\n'
+            html += '            </ul>\n'
+            html += '        </div>\n'
+            html += '    </div>\n'
+
+            return html
+
+        # Regular table rendering
+        html += f'    <table class="{table_class}">\n'
+
+        # Header row
+        header_line = lines[0]
+        headers = [h.strip() for h in header_line.split('\t')]
+
+        html += '        <thead>\n'
+        html += '            <tr>\n'
+        for header in headers:
+            html += f'                <th scope="col">{self._escape_html(header)}</th>\n'
+        html += '            </tr>\n'
+        html += '        </thead>\n'
+
+        # Data rows
+        html += '        <tbody>\n'
+        for line in lines[1:]:
+            columns = [c.strip() for c in line.split('\t')]
+
+            html += '            <tr class="fee-row">\n'
+            for i, col in enumerate(columns):
+                # First column is row header for fee tables
+                if i == 0 and (is_fee or is_payment):
+                    html += f'                <th scope="row" class="fee-label">{self._escape_html(col)}</th>\n'
+                else:
+                    # Add 'free' class if value indicates no fee
+                    value_class = ''
+                    col_upper = col.upper()
+                    if any(word in col_upper for word in ['FREE', 'INSTANT', 'NONE', '0%']):
+                        value_class = ' free'
+
+                    html += f'                <td class="fee-value{value_class}">{self._escape_html(col)}</td>\n'
+
+            html += '            </tr>\n'
+
+        html += '        </tbody>\n'
+        html += '    </table>\n'
+
+        return html
+
+    def _has_image_metadata(self, content: str) -> bool:
+        """Detect if content contains image metadata block"""
+        return ('Alt Text:' in content or 'File Name:' in content) and not '\t' in content
+
+    def _render_image_from_metadata(self, content: str) -> str:
+        """Extract image metadata and render as figure with img tag"""
+        lines = [l.strip() for l in content.split('\n') if l.strip()]
+
+        alt_text = ''
+        file_name = ''
+        caption = ''
+
+        current_field = None
+        for line in lines:
+            if line.startswith('Alt Text:'):
+                current_field = 'alt'
+                alt_text = line.replace('Alt Text:', '').strip()
+            elif line.startswith('File Name:'):
+                current_field = 'file'
+                file_name = line.replace('File Name:', '').strip()
+            elif line.startswith('Caption:'):
+                current_field = 'caption'
+                caption = line.replace('Caption:', '').strip()
+            elif current_field and not line.endswith(':'):
+                # Continuation of previous field
+                if current_field == 'alt':
+                    alt_text += ' ' + line
+                elif current_field == 'file':
+                    file_name += line
+                elif current_field == 'caption':
+                    caption += ' ' + line
+
+        if not file_name:
+            return ''
+
+        # Build image path (assuming images are in wp-content/uploads)
+        # User can adjust base path as needed
+        image_url = f"/wp-content/uploads/{file_name}"
+
+        html = '    <figure style="margin: 1.5rem 0;">\n'
+        html += f'        <img src="{image_url}" alt="{self._escape_html(alt_text)}" '
+        html += 'style="width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" loading="lazy" />\n'
+
+        if caption:
+            # Remove separator lines from caption
+            caption = caption.replace('________________________________________', '').strip()
+            if caption:
+                html += f'        <figcaption style="text-align: center; font-size: 0.875rem; color: #6e6e73; margin-top: 0.5rem;">'
+                html += f'{self._escape_html(caption)}</figcaption>\n'
+
+        html += '    </figure>\n'
+
+        return html
 
     def _slugify(self, text: str) -> str:
         """Convert text to URL-safe slug"""

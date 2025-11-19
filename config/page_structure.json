@@ -18,6 +18,20 @@
         "references",
         "footer"
       ]
+    },
+    "single_casino_review": {
+      "description": "Single casino/platform detailed review pages",
+      "section_order": [
+        "article_header",
+        "elementor_placeholder",
+        "single_quick_verdict",
+        "single_platform_card",
+        "content_sections",
+        "faq_simple",
+        "conclusion",
+        "references",
+        "footer"
+      ]
     }
   },
   "section_definitions": {
@@ -90,6 +104,26 @@
       "template": "components/footer.html",
       "required": true,
       "description": "Article footer with disclaimers"
+    },
+    "single_quick_verdict": {
+      "template": "components/single_quick_verdict.html",
+      "required": true,
+      "description": "Quick verdict for single casino with 3 category cards"
+    },
+    "single_platform_card": {
+      "template": "components/single_platform_card.html",
+      "required": true,
+      "description": "Single detailed platform card with tabs"
+    },
+    "content_sections": {
+      "template": null,
+      "required": false,
+      "description": "General content sections with tables and images"
+    },
+    "faq_simple": {
+      "template": null,
+      "required": false,
+      "description": "FAQ section with simple h2/h3 format (not accordion)"
     }
   }
 }

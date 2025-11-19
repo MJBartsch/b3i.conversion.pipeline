@@ -87,7 +87,7 @@ def convert_document(input_file: str, output_file: str = None) -> str:
     # Step 3: Build HTML with PageBuilder
     print("  [3/4] Building HTML with structured sections...")
     page_builder = PageBuilder()
-    html = page_builder.build_platform_comparison_page(document, images, affiliate_links)
+    html = page_builder.build_page(document, images, affiliate_links)
 
     # Step 4: Add internal linking (optional enhancement) - TODO: implement later
     print("  [4/4] Finalizing HTML...")
