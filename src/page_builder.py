@@ -398,7 +398,7 @@ class PageBuilder:
         return html
 
     def _build_howto_guide_section(self, content_map: Dict, document: Dict) -> str:
-        """Build how-to guide with content cards and quote blocks"""
+        """Build how-to guide with content cards"""
         howto_data = content_map.get('howto_steps', {})
 
         if not howto_data or not howto_data.get('steps'):
@@ -415,24 +415,13 @@ class PageBuilder:
             step_content = step.get("content", "")
 
             html += '<div class="content-card">\n'
-            html += f'    <h3 style="color: #ff6b35;">Step {i}: {self._escape_html(step_title)}</h3>\n'
+            html += f'    <h3>Step {i}: {self._escape_html(step_title)}</h3>\n'
 
-            # Split into sentences for better formatting
-            sentences = [s.strip() + '.' for s in step_content.split('.') if s.strip()]
+            # Split into paragraphs for better formatting
+            paragraphs = [p.strip() for p in step_content.split('\n') if p.strip()]
 
-            if sentences:
-                # First sentence as main paragraph
-                html += f'    <p>{self._escape_html(sentences[0])}</p>\n'
-
-                # Additional info in quote block if available
-                if len(sentences) > 1:
-                    html += '    <div class="quote-block">\n'
-                    html += f'        <p>{self._escape_html(" ".join(sentences[1:]))}</p>\n'
-                    html += '    </div>\n'
-
-            # Add helpful tip box
-            if i % 2 == 0:
-                html += '    <p class="small" style="color: #86868b; margin-top: 1rem;">💡 Tip: This step usually takes 2-3 minutes to complete.</p>\n'
+            for para in paragraphs:
+                html += f'    <p>{self._escape_html(para)}</p>\n'
 
             html += '</div>\n'
 
@@ -1060,7 +1049,7 @@ class PageBuilder:
     def _render_checklist_card(self, title: str, items: List[str]) -> str:
         """Render a single checklist card"""
         html = '<div class="content-card">\n'
-        html += f'    <h3 style="color: #ff6b35; margin-top: 0;">{self._escape_html(title)}</h3>\n'
+        html += f'    <h3>{self._escape_html(title)}</h3>\n'
         html += '    <ul>\n'
         for item in items:
             html += f'        <li>{self._escape_html(item)}</li>\n'
