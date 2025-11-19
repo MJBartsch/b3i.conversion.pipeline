@@ -238,20 +238,32 @@ class PageBuilder:
             heading = section.get('heading', '')
             heading_id = self._slugify(heading)
             heading_escaped = self._escape_html(heading)
+            content = section.get('content', '')
+
+            # Check if section has a CSV table
+            has_csv_table = section.get('type') == 'comparison_table'
 
             html += f'<section class="content-section" aria-labelledby="{heading_id}">\n'
             html += f'    <h2 id="{heading_id}">{heading_escaped}</h2>\n'
 
-            # Parse content into paragraphs and subsections
-            content = section.get('content', '')
-            html += self._render_content_paragraphs(content)
+            if has_csv_table:
+                # Render intro paragraph first
+                paragraphs = [p.strip() for p in content.split('\n') if p.strip() and not p.startswith('csv')]
+                if paragraphs:
+                    html += f'    <p class="lead">{self._escape_html(paragraphs[0])}</p>\n'
+
+                # Render table as top10-section list
+                html += self._render_comparison_list(section)
+            else:
+                # Parse content into paragraphs and subsections
+                html += self._render_content_paragraphs(content)
 
             html += '</section>\n\n'
 
         return html
 
     def _build_howto_guide_section(self, content_map: Dict, document: Dict) -> str:
-        """Build how-to guide with steps"""
+        """Build how-to guide with content cards and quote blocks"""
         howto_data = content_map.get('howto_steps', {})
 
         if not howto_data or not howto_data.get('steps'):
@@ -262,24 +274,39 @@ class PageBuilder:
 
         html = '<section class="howto-section content-section" aria-labelledby="howto-heading">\n'
         html += f'    <h2 id="howto-heading">{self._escape_html(heading)}</h2>\n'
-        html += '    <div class="howto-steps">\n'
 
         for i, step in enumerate(steps, 1):
-            html += '        <div class="howto-step">\n'
-            html += f'            <div class="step-number">{i}</div>\n'
-            html += '            <div class="step-content">\n'
-            html += f'                <h3 class="step-title">{self._escape_html(step.get("title", ""))}</h3>\n'
-            html += f'                <p>{self._escape_html(step.get("content", ""))}</p>\n'
-            html += '            </div>\n'
-            html += '        </div>\n'
+            step_title = step.get("title", "").replace(f"Step {i}:", "").replace(f"Step {i}", "").strip()
+            step_content = step.get("content", "")
 
-        html += '    </div>\n'
+            html += '<div class="content-card">\n'
+            html += f'    <h3 style="color: #ff6b35;">Step {i}: {self._escape_html(step_title)}</h3>\n'
+
+            # Split into sentences for better formatting
+            sentences = [s.strip() + '.' for s in step_content.split('.') if s.strip()]
+
+            if sentences:
+                # First sentence as main paragraph
+                html += f'    <p>{self._escape_html(sentences[0])}</p>\n'
+
+                # Additional info in quote block if available
+                if len(sentences) > 1:
+                    html += '    <div class="quote-block">\n'
+                    html += f'        <p>{self._escape_html(" ".join(sentences[1:]))}</p>\n'
+                    html += '    </div>\n'
+
+            # Add helpful tip box
+            if i % 2 == 0:
+                html += '    <p class="small" style="color: #86868b; margin-top: 1rem;">💡 Tip: This step usually takes 2-3 minutes to complete.</p>\n'
+
+            html += '</div>\n'
+
         html += '</section>\n\n'
 
         return html
 
     def _build_additional_content_section(self, content_map: Dict, document: Dict) -> str:
-        """Build additional content sections"""
+        """Build additional content sections with enhanced styling"""
         additional_sections = content_map.get('additional_content', [])
 
         if not additional_sections:
@@ -290,20 +317,32 @@ class PageBuilder:
             heading = section.get('heading', '')
             heading_id = self._slugify(heading)
             heading_escaped = self._escape_html(heading)
+            content = section.get('content', '')
+
+            # Check section type
+            has_csv_table = section.get('type') == 'comparison_table'
+            has_checklist = self._is_checklist_section(content)
 
             html += f'<section class="content-section" aria-labelledby="{heading_id}">\n'
             html += f'    <h2 id="{heading_id}">{heading_escaped}</h2>\n'
 
-            # Parse content into paragraphs and subsections
-            content = section.get('content', '')
-            html += self._render_content_paragraphs(content)
+            # Handle different section types
+            if has_csv_table:
+                # Convert CSV table to top10-section list format
+                html += self._render_comparison_list(section)
+            elif has_checklist:
+                # Render checklist with content cards
+                html += self._render_checklist_cards(content)
+            else:
+                # Render with content cards if text is long
+                html += self._render_content_with_cards(content)
 
             html += '</section>\n\n'
 
         return html
 
     def _build_responsible_gambling_section(self, content_map: Dict, document: Dict) -> str:
-        """Build responsible gambling section"""
+        """Build responsible gambling section with colored info boxes"""
         rg_data = content_map.get('responsible_gambling', {})
 
         if not rg_data:
@@ -314,22 +353,37 @@ class PageBuilder:
 
         html = '<section class="responsible-gambling content-section" aria-labelledby="responsible-gambling-heading">\n'
         html += f'    <h2 id="responsible-gambling-heading">{self._escape_html(heading)}</h2>\n'
-        html += '    <div class="rg-content">\n'
 
-        # Render content paragraphs
-        paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+        # Main content in info box for visual emphasis
+        html += '    <div class="info-box">\n'
+        html += '        <h4>🛡️ Gambling Responsibly</h4>\n'
+
+        paragraphs = [p.strip() for p in content.split('\n') if p.strip()][:2]
         for para in paragraphs:
             html += f'        <p>{self._escape_html(para)}</p>\n'
 
         html += '    </div>\n'
-        html += '    <div class="rg-resources">\n'
-        html += '        <p><strong>Need help?</strong></p>\n'
+
+        # Additional tools in quote blocks
+        remaining_paras = [p.strip() for p in content.split('\n') if p.strip()][2:]
+        if remaining_paras:
+            html += '    <div class="quote-block">\n'
+            for para in remaining_paras[:2]:
+                html += f'        <p>{self._escape_html(para)}</p>\n'
+            html += '    </div>\n'
+
+        # Resources in summary box
+        html += '    <div class="summary-box">\n'
+        html += '        <h3>🆘 Need Help?</h3>\n'
+        html += '        <p><strong>If you or someone you know needs support:</strong></p>\n'
         html += '        <ul>\n'
-        html += '            <li><a href="https://www.begambleaware.org" target="_blank" rel="noopener">BeGambleAware.org</a></li>\n'
-        html += '            <li><a href="https://www.gamcare.org.uk" target="_blank" rel="noopener">GamCare.org.uk</a></li>\n'
-        html += '            <li><a href="https://www.gamstop.co.uk" target="_blank" rel="noopener">GamStop (Self-Exclusion)</a></li>\n'
+        html += '            <li><a href="https://www.begambleaware.org" target="_blank" rel="noopener"><strong>BeGambleAware.org</strong></a> - Free support and advice</li>\n'
+        html += '            <li><a href="https://www.gamcare.org.uk" target="_blank" rel="noopener"><strong>GamCare.org.uk</strong></a> - Counseling services</li>\n'
+        html += '            <li><a href="https://www.gamstop.co.uk" target="_blank" rel="noopener"><strong>GamStop</strong></a> - Self-exclusion scheme</li>\n'
         html += '        </ul>\n'
+        html += '        <p class="small">All services are free and confidential.</p>\n'
         html += '    </div>\n'
+
         html += '</section>\n\n'
 
         return html
@@ -563,7 +617,47 @@ class PageBuilder:
         for section in sections:
             heading = section.get('heading', '')
             if any(ch in heading for ch in context_headings):
-                context.append(section)
+                # Check if this section contains a CSV table
+                content = section.get('content', '')
+                if 'csv\n' in content or '\ncsv' in content:
+                    # Parse the CSV table
+                    lines = content.split('\n')
+                    csv_start = None
+                    csv_lines = []
+                    caption = ''
+
+                    for i, line in enumerate(lines):
+                        if line.strip() == 'csv':
+                            csv_start = i
+                        elif csv_start is not None and ',' in line:
+                            csv_lines.append(line)
+                        elif csv_start is not None and not line.strip().startswith(','):
+                            # This is the caption
+                            caption = line.strip()
+                            break
+
+                    if csv_lines:
+                        # Parse CSV into table data
+                        table_data = []
+                        headers = [h.strip() for h in csv_lines[0].split(',')]
+
+                        for row_line in csv_lines[1:]:
+                            values = [v.strip() for v in row_line.split(',')]
+                            if len(values) == len(headers):
+                                row_dict = dict(zip(headers, values))
+                                table_data.append(row_dict)
+
+                        # Mark section as having table
+                        section_copy = section.copy()
+                        section_copy['type'] = 'comparison_table'
+                        section_copy['table_data'] = table_data
+                        section_copy['caption'] = caption
+                        context.append(section_copy)
+                    else:
+                        context.append(section)
+                else:
+                    context.append(section)
+
                 if len(context) >= 3:
                     break
 
@@ -696,6 +790,163 @@ class PageBuilder:
                 lines = [l.strip() for l in content.split('\n') if l.strip()]
                 return [{'text': line} for line in lines]
         return []
+
+    # ===== Enhanced rendering methods for better visual styling =====
+
+    def _is_checklist_section(self, content: str) -> bool:
+        """Check if content contains a bulleted checklist"""
+        lines = content.split('\n')
+        bullet_count = sum(1 for line in lines if line.strip().startswith('•'))
+        return bullet_count > 5  # Multiple bullet points indicate checklist
+
+    def _render_comparison_list(self, section: Dict) -> str:
+        """Render CSV table as top10-section list"""
+        table_data = section.get('table_data', [])
+        caption = section.get('caption', '')
+
+        if not table_data:
+            return ''
+
+        html = '<div class="top10-section">\n'
+        html += '    <div class="top10-list">\n'
+
+        for i, row in enumerate(table_data, 1):
+            # Determine rank class
+            rank_class = ''
+            badge_class = ''
+            if i == 1:
+                rank_class = ' rank-1'
+                badge_class = ' gold'
+            elif i == 2:
+                rank_class = ' rank-2'
+                badge_class = ' silver'
+            elif i == 3:
+                rank_class = ' rank-3'
+                badge_class = ' bronze'
+
+            html += f'    <div class="top10-item{rank_class}">\n'
+            html += f'        <div class="rank-badge{badge_class}">{i}</div>\n'
+
+            # Platform logo (placeholder)
+            platform_name = list(row.values())[0] if row else f'Option {i}'
+            html += '        <div class="top10-logo">\n'
+            html += '            <span style="font-weight: 700; font-size: 0.875rem;">✓</span>\n'
+            html += '        </div>\n'
+
+            # Content area with features
+            html += '        <div class="top10-content">\n'
+            html += '            <div class="top10-header">\n'
+            html += f'                <h3 class="platform-name">{self._escape_html(platform_name)}</h3>\n'
+            html += '            </div>\n'
+
+            # Feature highlights from other columns
+            html += '            <div class="feature-highlights">\n'
+            features = list(row.values())[1:]  # Skip first column
+            for feature in features[:3]:  # Show top 3 features
+                if feature:
+                    html += f'                <span class="feature-item">• {self._escape_html(str(feature))}</span>\n'
+            html += '            </div>\n'
+            html += '        </div>\n'
+
+            html += '    </div>\n'
+
+        html += '    </div>\n'
+
+        # Add caption below
+        if caption:
+            html += f'    <p class="small" style="margin-top: 1rem; color: #86868b; font-style: italic;">{self._escape_html(caption)}</p>\n'
+
+        html += '</div>\n'
+
+        return html
+
+    def _render_checklist_cards(self, content: str) -> str:
+        """Render checklist content as grouped content cards"""
+        lines = content.split('\n')
+
+        html = ''
+        current_group = None
+        current_items = []
+
+        for line in lines:
+            line_stripped = line.strip()
+
+            # Check if it's a group header (ends with :)
+            if line_stripped and line_stripped.endswith(':') and not line_stripped.startswith('•'):
+                # Save previous group
+                if current_group and current_items:
+                    html += self._render_checklist_card(current_group, current_items)
+
+                current_group = line_stripped.rstrip(':')
+                current_items = []
+
+            # Check if it's a bullet point
+            elif line_stripped.startswith('•'):
+                item = line_stripped.lstrip('•').strip()
+                if item:
+                    current_items.append(item)
+
+        # Save last group
+        if current_group and current_items:
+            html += self._render_checklist_card(current_group, current_items)
+
+        return html
+
+    def _render_checklist_card(self, title: str, items: List[str]) -> str:
+        """Render a single checklist card"""
+        html = '<div class="content-card">\n'
+        html += f'    <h3 style="color: #ff6b35; margin-top: 0;">{self._escape_html(title)}</h3>\n'
+        html += '    <ul>\n'
+        for item in items:
+            html += f'        <li>{self._escape_html(item)}</li>\n'
+        html += '    </ul>\n'
+        html += '</div>\n'
+        return html
+
+    def _render_content_with_cards(self, content: str) -> str:
+        """Render long content with content cards for better visual breaks"""
+        lines = [l.strip() for l in content.split('\n') if l.strip()]
+
+        # If content is short, render normally
+        if len(lines) < 4:
+            return self._render_content_paragraphs(content)
+
+        html = ''
+        current_section = []
+
+        for i, line in enumerate(lines):
+            # Check if it's an h3 heading
+            if '(h3)' in line:
+                # Render previous section in a card if it exists
+                if current_section:
+                    html += '<div class="content-card">\n'
+                    for para in current_section:
+                        html += f'    <p>{self._escape_html(para)}</p>\n'
+                    html += '</div>\n'
+                    current_section = []
+
+                # Render the h3
+                heading_text = line.replace('(h3)', '').strip()
+                html += f'    <h3>{self._escape_html(heading_text)}</h3>\n'
+            else:
+                current_section.append(line)
+
+                # Create cards every 2-3 paragraphs
+                if len(current_section) >= 3:
+                    html += '<div class="content-card">\n'
+                    for para in current_section:
+                        html += f'    <p>{self._escape_html(para)}</p>\n'
+                    html += '</div>\n'
+                    current_section = []
+
+        # Render remaining content
+        if current_section:
+            html += '<div class="content-card">\n'
+            for para in current_section:
+                html += f'    <p>{self._escape_html(para)}</p>\n'
+            html += '</div>\n'
+
+        return html
 
     def _assemble_page(self, document: Dict, sections_html: List[str]) -> str:
         """Assemble final page HTML"""
