@@ -1,0 +1,89 @@
+{
+  "page_types": {
+    "platform_comparison": {
+      "description": "Casino/platform comparison and review pages",
+      "section_order": [
+        "article_header",
+        "elementor_placeholder",
+        "quick_verdict",
+        "context_section",
+        "comparison_table",
+        "detailed_reviews",
+        "howto_guide",
+        "additional_content",
+        "responsible_gambling",
+        "conclusion",
+        "faq",
+        "references",
+        "footer"
+      ]
+    }
+  },
+  "section_definitions": {
+    "article_header": {
+      "template": "components/article_header.html",
+      "required": true,
+      "description": "Page title and intro paragraphs"
+    },
+    "elementor_placeholder": {
+      "template": "components/elementor_placeholder.html",
+      "required": true,
+      "description": "WordPress Elementor template placeholder"
+    },
+    "quick_verdict": {
+      "template": "components/quick_verdict_section.html",
+      "required": true,
+      "description": "Top 3 platforms quick verdict cards with trust signals"
+    },
+    "context_section": {
+      "template": "components/content_section.html",
+      "required": false,
+      "description": "Understanding/context section with regulatory info"
+    },
+    "comparison_table": {
+      "template": "components/comparison_table_section.html",
+      "required": true,
+      "description": "Main comparison table with all platforms"
+    },
+    "detailed_reviews": {
+      "template": "components/detailed_reviews_section.html",
+      "required": true,
+      "description": "Detailed platform review cards with tabs"
+    },
+    "howto_guide": {
+      "template": "components/howto_section.html",
+      "required": false,
+      "description": "Step-by-step how-to guide with content cards"
+    },
+    "additional_content": {
+      "template": "components/content_sections.html",
+      "required": false,
+      "description": "Additional content sections (e-wallet comparison, features, etc.)"
+    },
+    "responsible_gambling": {
+      "template": "components/responsible_gambling_section.html",
+      "required": false,
+      "description": "Responsible gambling information and warnings"
+    },
+    "conclusion": {
+      "template": "components/conclusion_section.html",
+      "required": false,
+      "description": "Final verdict and conclusion"
+    },
+    "faq": {
+      "template": "components/faq_section.html",
+      "required": true,
+      "description": "FAQ accordion section"
+    },
+    "references": {
+      "template": "components/references_section.html",
+      "required": false,
+      "description": "References and citations"
+    },
+    "footer": {
+      "template": "components/footer.html",
+      "required": true,
+      "description": "Article footer with disclaimers"
+    }
+  }
+}
