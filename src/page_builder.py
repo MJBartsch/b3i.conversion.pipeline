@@ -792,7 +792,7 @@ class PageBuilder:
                 if question:
                     faqs.append({
                         'question': question,
-                        'answer': f'<p>{self._escape_html(answer)}</p>'
+                        'answer': answer  # Don't add <p> tags here, let renderer handle it
                     })
 
         return faqs
