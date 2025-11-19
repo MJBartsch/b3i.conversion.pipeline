@@ -153,6 +153,10 @@ class PageBuilder:
         html = f'<section class="content-section" id="comparison" aria-labelledby="comparison-heading">\n'
         html += f'    <h2 id="comparison-heading">{self._escape_html(heading)}</h2>\n'
         html += '    <div class="table-container">\n'
+        html += '        <div class="table-header">\n'
+        html += '            <h3 class="table-title">Compare All Features</h3>\n'
+        html += '            <p class="table-subtitle">Side-by-side comparison of mobile bitcoin casino features</p>\n'
+        html += '        </div>\n'
         html += '        <div class="table-responsive">\n'
         html += '            <table class="platform-table" aria-label="Comparison table">\n'
 
