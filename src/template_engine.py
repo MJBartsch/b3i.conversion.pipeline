@@ -86,6 +86,12 @@ class TemplateEngine:
         </div>
 '''
 
+        # Generate fees table
+        fees_content = self._render_fee_table(platform_data.get('fees', {}))
+
+        # Generate sports content
+        sports_content = self._render_sports_content(platform_data.get('sports', {}))
+
         data = {
             'platform_id': platform_id,
             'header_image': platform_data.get('header_image', ''),
@@ -98,8 +104,8 @@ class TemplateEngine:
             'affiliate_link': platform_data.get('affiliate_link', '#'),
             'cta_note': platform_data.get('cta_note', ''),
             'overview_content': platform_data.get('overview', ''),
-            'bonuses_content': platform_data.get('bonuses', ''),
-            'games_content': platform_data.get('games', ''),
+            'fees_content': fees_content,
+            'sports_content': sports_content,
             'pros_list': self._render_list_items(platform_data.get('pros', [])),
             'cons_list': self._render_list_items(platform_data.get('cons', []))
         }
@@ -153,3 +159,65 @@ class TemplateEngine:
         text = re.sub(r'[^a-z0-9]+', '-', text)
         text = text.strip('-')
         return text
+
+    def _render_fee_table(self, fees_data: Dict[str, Any]) -> str:
+        """Render fee table for the Fees tab"""
+        if not fees_data:
+            # Default fee structure
+            fees_data = {
+                'Deposit Fees': 'FREE',
+                'Withdrawal Fees': 'Network fees only',
+                'Trading Fees': 'N/A',
+                'Inactivity Fees': 'None'
+            }
+
+        html = '<table class="fee-table">\n'
+        html += '    <tbody>\n'
+
+        for fee_type, fee_value in fees_data.items():
+            # Add class based on fee value
+            value_class = 'free' if fee_value.upper() in ['FREE', 'NONE', '0%', '0'] else ''
+            html += '        <tr class="fee-row">\n'
+            html += f'            <th scope="row" class="fee-label">{fee_type}</th>\n'
+            html += f'            <td class="fee-value {value_class}">{fee_value}</td>\n'
+            html += '        </tr>\n'
+
+        html += '    </tbody>\n'
+        html += '</table>\n'
+
+        # Add additional fee information if provided
+        if isinstance(fees_data, dict) and 'notes' in fees_data:
+            html += f'<p class="fee-notes">{fees_data["notes"]}</p>\n'
+
+        return html
+
+    def _render_sports_content(self, sports_data: Dict[str, Any]) -> str:
+        """Render sports coverage content"""
+        if not sports_data:
+            # Default content
+            return '<p>Comprehensive sports betting coverage including football, basketball, tennis, and more.</p>'
+
+        html = ''
+
+        # If sports_data is a dict with detailed structure
+        if isinstance(sports_data, dict):
+            # Add intro paragraph
+            if 'intro' in sports_data:
+                html += f'<p>{sports_data["intro"]}</p>\n'
+
+            # Add sports list
+            if 'sports_list' in sports_data:
+                html += '<div class="sports-grid">\n'
+                for sport in sports_data['sports_list']:
+                    html += f'    <div class="sport-item">{sport}</div>\n'
+                html += '</div>\n'
+
+            # Add additional details
+            if 'details' in sports_data:
+                html += f'<p>{sports_data["details"]}</p>\n'
+
+        # If sports_data is a simple string
+        elif isinstance(sports_data, str):
+            html = f'<p>{sports_data}</p>'
+
+        return html

@@ -8,6 +8,7 @@
         "quick_verdict",
         "context_section",
         "comparison_table",
+        "top10_list",
         "detailed_reviews",
         "howto_guide",
         "additional_content",
@@ -44,6 +45,11 @@
       "template": "components/comparison_table_section.html",
       "required": true,
       "description": "Main comparison table with all platforms"
+    },
+    "top10_list": {
+      "template": "components/top10_section.html",
+      "required": true,
+      "description": "Top 10 platforms list with detailed information"
     },
     "detailed_reviews": {
       "template": "components/detailed_reviews_section.html",
