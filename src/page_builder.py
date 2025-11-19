@@ -1017,18 +1017,23 @@ class PageBuilder:
 
     def _extract_casino_info(self, sections: List[Dict]) -> Dict:
         """Extract basic casino information from early sections"""
+        import re
+
         casino_info = {
             'name': '',
             'rating': '0/10',
             'pros': [],
-            'cons': []
+            'cons': [],
+            'statistics': {},
+            'tagline': '',
+            'rating_breakdown': {},
+            'bonus_details': {},
+            'software_providers': []
         }
 
         # Try to extract casino name from title
         if sections and sections[0].get('level') == 1:
             title = sections[0].get('heading', '')
-            # Extract casino name from patterns like "Is Casumo Worth It" or "888 Casino Review"
-            import re
 
             # Try pattern "Is X Worth It"
             worth_match = re.search(r'Is\s+([A-Z][a-zA-Z0-9\s]+?)\s+Worth', title)
@@ -1045,7 +1050,6 @@ class PageBuilder:
             heading = section.get('heading', '')
 
             # Look for rating pattern like "Overall: 3.6/5" or "6.9/10"
-            import re
             rating_match = re.search(r'Overall[:\s]+(\d+\.?\d*)/(\d+)', content + ' ' + heading, re.IGNORECASE)
             if rating_match:
                 score = rating_match.group(1)
@@ -1053,7 +1057,226 @@ class PageBuilder:
                 casino_info['rating'] = f"{score}/{total}"
                 break
 
+        # Extract detailed statistics
+        casino_info['statistics'] = self._extract_statistics(sections)
+
+        # Extract rating breakdown
+        casino_info['rating_breakdown'] = self._extract_rating_breakdown(sections)
+
+        # Extract bonus details
+        casino_info['bonus_details'] = self._extract_bonus_details(sections)
+
+        # Extract software providers
+        casino_info['software_providers'] = self._extract_software_providers(sections)
+
+        # Build tagline from extracted data
+        casino_info['tagline'] = self._build_tagline(casino_info, sections)
+
         return casino_info
+
+    def _extract_statistics(self, sections: List[Dict]) -> Dict:
+        """Extract key statistics from document"""
+        import re
+        stats = {
+            'game_count': '1,000+',
+            'withdrawal_time_min': '1hr',
+            'withdrawal_time_max': '6 days',
+            'trustpilot_rating': None,
+            'trustpilot_total': '5',
+            'trustpilot_reviews_count': None,
+            'founded_year': None,
+            'rtp': None,
+            'min_deposit': '£10',
+            'max_withdrawal_month': '£50,000'
+        }
+
+        full_text = ''
+        for section in sections:
+            content = section.get('content', '')
+            heading = section.get('heading', '')
+            full_text += f' {heading} {content}'
+
+        # Extract game count (patterns: "3,000+ games", "3,000-4,500 games")
+        game_match = re.search(r'(\d+,?\d+)\+?\s*(?:-\s*\d+,?\d+)?\s*games', full_text, re.IGNORECASE)
+        if game_match:
+            stats['game_count'] = game_match.group(1) + '+'
+
+        # Extract Trustpilot rating (pattern: "2.1/5" or "Trustpilot: 2.1/5")
+        tp_match = re.search(r'Trustpilot[:\s]+(\d+\.?\d*)/(\d+)', full_text, re.IGNORECASE)
+        if tp_match:
+            stats['trustpilot_rating'] = tp_match.group(1)
+            stats['trustpilot_total'] = tp_match.group(2)
+
+        # Extract Trustpilot review count
+        tp_count_match = re.search(r'(\d+,?\d+)\+?\s*(?:UK\s+)?reviews', full_text, re.IGNORECASE)
+        if tp_count_match:
+            stats['trustpilot_reviews_count'] = tp_count_match.group(1) + '+'
+
+        # Extract founded year (patterns: "launched in 2012", "since 2012", "(2012)")
+        year_match = re.search(r'(?:launched|since|operating|established|founded)[\s\w]*?(?:in\s+)?(\d{4})', full_text, re.IGNORECASE)
+        if year_match:
+            stats['founded_year'] = year_match.group(1)
+
+        # Extract RTP (pattern: "97.27% RTP", "RTP: 97.27%")
+        rtp_match = re.search(r'(\d+\.?\d+)%\s*RTP|RTP[:\s]+(\d+\.?\d+)%', full_text, re.IGNORECASE)
+        if rtp_match:
+            stats['rtp'] = rtp_match.group(1) or rtp_match.group(2)
+
+        # Extract withdrawal times from payment method table
+        for section in sections:
+            content = section.get('content', '')
+            heading = section.get('heading', '').lower()
+
+            if 'withdrawal' in heading and 'Method' in content:
+                # Look for withdrawal time ranges
+                e_wallet_match = re.search(r'E-wallets?\s+.*?(\d+(?:-\d+)?)\s*hrs?', content, re.IGNORECASE)
+                bank_match = re.search(r'Bank\s+Transfer\s+.*?(\d+)(?:-(\d+))?\s*days', content, re.IGNORECASE)
+
+                if e_wallet_match:
+                    stats['withdrawal_time_min'] = e_wallet_match.group(1) + 'hr'
+                if bank_match:
+                    max_days = bank_match.group(2) or bank_match.group(1)
+                    stats['withdrawal_time_max'] = max_days + ' days'
+
+        return stats
+
+    def _extract_rating_breakdown(self, sections: List[Dict]) -> Dict:
+        """Extract individual rating breakdown (Licensing, Game Selection, etc.)"""
+        import re
+        breakdown = {}
+
+        for section in sections:
+            heading = section.get('heading', '').lower()
+            content = section.get('content', '')
+
+            if 'how do we rate' in heading or 'rating' in heading:
+                # Look for bullet points with ratings like "• Licensing & Legitimacy: 5/5"
+                rating_lines = re.findall(r'•?\s*([^:]+):\s*(\d+\.?\d*)/(\d+)', content)
+                for line in rating_lines:
+                    category = line[0].strip()
+                    score = line[1]
+                    total = line[2]
+                    breakdown[category] = f"{score}/{total}"
+
+        return breakdown
+
+    def _extract_bonus_details(self, sections: List[Dict]) -> Dict:
+        """Extract detailed bonus information"""
+        import re
+        bonus_info = {
+            'bonus_amount': '100% match up to £100',
+            'free_spins': None,
+            'min_deposit': '£10',
+            'wagering': '30x',
+            'max_bet_slots': '£5/spin',
+            'max_bet_table': '£10/round'
+        }
+
+        for section in sections:
+            heading = section.get('heading', '').lower()
+            content = section.get('content', '')
+
+            if 'bonus' in heading or 'welcome' in heading:
+                # Extract bonus amount (pattern: "100% match up to £100")
+                bonus_match = re.search(r'(\d+%\s+match\s+(?:up\s+)?to\s+£\d+)', content, re.IGNORECASE)
+                if bonus_match:
+                    bonus_info['bonus_amount'] = bonus_match.group(1)
+
+                # Extract free spins (pattern: "50 bonus spins" or "50 free spins")
+                spins_match = re.search(r'(\d+)\s+(?:bonus|free)\s+spins', content, re.IGNORECASE)
+                if spins_match:
+                    bonus_info['free_spins'] = spins_match.group(1) + ' spins'
+
+                # Extract wagering requirement (pattern: "30x wagering")
+                wager_match = re.search(r'(\d+)x\s+wagering', content, re.IGNORECASE)
+                if wager_match:
+                    bonus_info['wagering'] = wager_match.group(1) + 'x'
+
+                # Extract min deposit
+                min_dep_match = re.search(r'£(\d+)\s+minimum\s+deposit', content, re.IGNORECASE)
+                if min_dep_match:
+                    bonus_info['min_deposit'] = '£' + min_dep_match.group(1)
+
+            # Extract max bet limits
+            if 'max' in heading and 'bet' in heading:
+                # Pattern: "£5/spin (slots), £0.50/line, £10/round (table/live)"
+                slot_match = re.search(r'£(\d+(?:\.\d+)?)/spin', content, re.IGNORECASE)
+                if slot_match:
+                    bonus_info['max_bet_slots'] = '£' + slot_match.group(1) + '/spin'
+
+                table_match = re.search(r'£(\d+(?:\.\d+)?)/round', content, re.IGNORECASE)
+                if table_match:
+                    bonus_info['max_bet_table'] = '£' + table_match.group(1) + '/round'
+
+        return bonus_info
+
+    def _extract_software_providers(self, sections: List[Dict]) -> List[Dict]:
+        """Extract software provider table data"""
+        providers = []
+
+        for section in sections:
+            heading = section.get('heading', '').lower()
+            content = section.get('content', '')
+
+            if 'software' in heading or 'provider' in heading:
+                # Look for provider table with format: "Provider\tSlots\tLive\tTables\tJackpots"
+                if '\t' in content:
+                    lines = content.strip().split('\n')
+                    headers = None
+
+                    for line in lines:
+                        if '\t' in line:
+                            parts = [p.strip() for p in line.split('\t')]
+
+                            if not headers:
+                                headers = parts
+                                continue
+
+                            if len(parts) >= 5:
+                                providers.append({
+                                    'name': parts[0],
+                                    'slots': parts[1] == '✓',
+                                    'live': parts[2] == '✓',
+                                    'tables': parts[3] == '✓',
+                                    'jackpots': parts[4] == '✓'
+                                })
+
+        return providers
+
+    def _build_tagline(self, casino_info: Dict, sections: List[Dict]) -> str:
+        """Build tagline from extracted statistics"""
+        import re
+        tagline_parts = []
+
+        # Look for specific characteristics in content
+        full_text = ''
+        for section in sections[:5]:  # Check early sections
+            content = section.get('content', '')
+            heading = section.get('heading', '')
+            full_text += f' {heading} {content}'
+
+        # Check for "gamified" mention
+        if re.search(r'gamified', full_text, re.IGNORECASE):
+            tagline_parts.append('Gamified Casino')
+
+        # Check for user review sentiment
+        stats = casino_info.get('statistics', {})
+        tp_rating = stats.get('trustpilot_rating')
+        if tp_rating:
+            tp_val = float(tp_rating)
+            if tp_val < 3:
+                tagline_parts.append('Mixed User Reviews')
+            elif tp_val < 4:
+                tagline_parts.append('Good User Reviews')
+            else:
+                tagline_parts.append('Excellent Reviews')
+
+        # Add established year
+        founded_year = stats.get('founded_year')
+        if founded_year:
+            tagline_parts.append(f'Established {founded_year}')
+
+        return ' • '.join(tagline_parts) if tagline_parts else 'Licensed Casino'
 
     def _extract_pros_cons(self, sections: List[Dict]) -> Dict:
         """Extract pros and cons from the pros/cons section"""
@@ -1249,7 +1472,12 @@ class PageBuilder:
         html += '            </div>\n'
         html += '        </div>\n\n'
 
-        # Card 2: Top Concern - User Reviews
+        # Card 2: Top Concern - User Reviews (use extracted Trustpilot data)
+        stats = casino_info.get('statistics', {})
+        tp_rating = stats.get('trustpilot_rating')
+        tp_total = stats.get('trustpilot_total', '5')
+        tp_reviews_count = stats.get('trustpilot_reviews_count', '')
+
         html += '        <div class="qv-category">\n'
         html += '            <div class="qv-category-header">\n'
         html += '                <span class="qv-category-label">Top Concern</span>\n'
@@ -1261,18 +1489,51 @@ class PageBuilder:
         html += '                </div>\n'
         html += '                <div class="qv-winner-link">\n'
         html += '                    <h3 class="qv-winner-name" style="margin-top: 0;">\n'
-        html += '                        Customer Feedback\n'
-        html += '                        <div class="qv-winner-rating">\n'
-        html += '                            <span class="qv-rating-stars" role="img" aria-label="User rating">\n'
-        html += '                                <span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star empty" aria-hidden="true">☆</span><span class="star empty" aria-hidden="true">☆</span><span class="star empty" aria-hidden="true">☆</span>\n'
-        html += '                            </span>\n'
-        html += '                            <span class="rating-value" aria-hidden="true">Mixed</span>\n'
-        html += '                        </div>\n'
+
+        if tp_rating:
+            html += f'                        Trustpilot Rating {self._escape_html(tp_rating)}/{self._escape_html(tp_total)}\n'
+            # Generate stars for Trustpilot rating
+            try:
+                tp_num = float(tp_rating)
+                tp_full_stars = int(tp_num)
+                tp_has_half = (tp_num - tp_full_stars) >= 0.5
+                tp_total_int = int(tp_total)
+                tp_empty_stars = tp_total_int - tp_full_stars - (1 if tp_has_half else 0)
+
+                tp_stars_html = ''
+                for i in range(tp_full_stars):
+                    tp_stars_html += '<span class="star" aria-hidden="true">★</span>'
+                if tp_has_half:
+                    tp_stars_html += '<span class="star half" aria-hidden="true">★</span>'
+                for i in range(tp_empty_stars):
+                    tp_stars_html += '<span class="star empty" aria-hidden="true">☆</span>'
+
+                html += '                        <div class="qv-winner-rating">\n'
+                html += f'                            <span class="qv-rating-stars" role="img" aria-label="{self._escape_html(tp_rating)} out of {self._escape_html(tp_total)} stars">\n'
+                html += f'                                {tp_stars_html}\n'
+                html += '                            </span>\n'
+                html += f'                            <span class="rating-value" aria-hidden="true">{self._escape_html(tp_rating)}/{self._escape_html(tp_total)}</span>\n'
+                html += '                        </div>\n'
+            except:
+                html += '                        <div class="qv-winner-rating">\n'
+                html += '                            <span class="rating-value" aria-hidden="true">Mixed</span>\n'
+                html += '                        </div>\n'
+        else:
+            html += '                        Customer Feedback\n'
+            html += '                        <div class="qv-winner-rating">\n'
+            html += '                            <span class="rating-value" aria-hidden="true">Mixed</span>\n'
+            html += '                        </div>\n'
+
         html += '                    </h3>\n'
         html += '                    <ul class="qv-winner-features">\n'
-        html += '                        <li>User reviews vary</li>\n'
-        html += '                        <li>Verify current status</li>\n'
-        html += '                        <li>Check recent feedback</li>\n'
+        if tp_reviews_count:
+            html += f'                        <li>{self._escape_html(tp_reviews_count)} reviews analyzed</li>\n'
+            html += '                        <li>Withdrawal delays reported</li>\n'
+            html += '                        <li>Verification issues common</li>\n'
+        else:
+            html += '                        <li>User reviews vary</li>\n'
+            html += '                        <li>Verify current status</li>\n'
+            html += '                        <li>Check recent feedback</li>\n'
         html += '                    </ul>\n'
         html += '                    <span class="qv-highlight-badge" style="background-color: #ffc107;">CHECK REVIEWS</span>\n'
         html += '                </div>\n'
@@ -1285,7 +1546,10 @@ class PageBuilder:
         html += '            </div>\n'
         html += '        </div>\n\n'
 
-        # Card 3: Best Feature - Game Selection
+        # Card 3: Best Feature - Game Selection (use extracted game statistics)
+        game_count = stats.get('game_count', '1,000+')
+        rtp = stats.get('rtp')
+
         html += '        <div class="qv-category">\n'
         html += '            <div class="qv-category-header">\n'
         html += '                <span class="qv-category-label">Best Feature</span>\n'
@@ -1297,7 +1561,7 @@ class PageBuilder:
         html += '                </div>\n'
         html += '                <div class="qv-winner-link">\n'
         html += '                    <h3 class="qv-winner-name" style="margin-top: 0;">\n'
-        html += '                        Wide Selection\n'
+        html += f'                        {self._escape_html(game_count)} Games\n'
         html += '                        <div class="qv-winner-rating">\n'
         html += '                            <span class="qv-rating-stars" role="img" aria-label="5 out of 5 stars">\n'
         html += '                                <span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span>\n'
@@ -1306,9 +1570,12 @@ class PageBuilder:
         html += '                        </div>\n'
         html += '                    </h3>\n'
         html += '                    <ul class="qv-winner-features">\n'
-        html += '                        <li>Extensive game library</li>\n'
+        html += f'                        <li>{self._escape_html(game_count)} games available</li>\n'
+        if rtp:
+            html += f'                        <li>{self._escape_html(rtp)}% average RTP</li>\n'
+        else:
+            html += '                        <li>High RTP slots</li>\n'
         html += '                        <li>Top providers</li>\n'
-        html += '                        <li>Regular updates</li>\n'
         html += '                    </ul>\n'
         html += '                    <span class="qv-highlight-badge">EXCELLENT</span>\n'
         html += '                </div>\n'
@@ -1352,11 +1619,13 @@ class PageBuilder:
         rating = casino_info.get('rating', '0/10')
         platform_id = self._slugify(casino_name)
 
-        # Get tab content, pros/cons, and images
+        # Get tab content, pros/cons, images, and extracted statistics
         tab_content = content_map.get('tab_content', {})
         pros = casino_info.get('pros', [])
         cons = casino_info.get('cons', [])
         images = content_map.get('images', {})
+        stats = casino_info.get('statistics', {})
+        tagline = casino_info.get('tagline', f'{casino_name} • Comprehensive Review')
 
         # Extract rating number for stars
         try:
@@ -1381,31 +1650,43 @@ class PageBuilder:
             logo_img = logo_img.replace('<img', f'<img title="{self._escape_html(casino_name)}"')
         html += f'                {logo_img}\n'
         html += '            </div>\n'
-        html += f'            <p class="platform-tagline">{self._escape_html(casino_name)} • Comprehensive Review</p>\n'
+        html += f'            <p class="platform-tagline">{self._escape_html(tagline)}</p>\n'
         html += '        </div>\n'
         html += '    </div>\n\n'
 
-        # Stats bar with more details
+        # Stats bar with extracted statistics
+        founded_year = stats.get('founded_year', '2012')
+        game_count = stats.get('game_count', '1,000+')
+        withdrawal_min = stats.get('withdrawal_time_min', '1hr')
+        withdrawal_max = stats.get('withdrawal_time_max', '6 days')
+        min_deposit = stats.get('min_deposit', '£10')
+        tp_rating = stats.get('trustpilot_rating')
+        tp_total = stats.get('trustpilot_total', '5')
+
         html += '    <div class="stats-bar">\n'
         html += '        <div class="stat-item">\n'
         html += '            <div class="stat-label">Founded</div>\n'
-        html += '            <div class="stat-value highlight">2012</div>\n'
+        html += f'            <div class="stat-value highlight">{self._escape_html(founded_year)}</div>\n'
         html += '        </div>\n'
         html += '        <div class="stat-item">\n'
         html += '            <div class="stat-label">Total Games</div>\n'
-        html += '            <div class="stat-value highlight">1,000+</div>\n'
+        html += f'            <div class="stat-value highlight">{self._escape_html(game_count)}</div>\n'
         html += '        </div>\n'
         html += '        <div class="stat-item">\n'
         html += '            <div class="stat-label">Withdrawal Time</div>\n'
-        html += '            <div class="stat-value">1-3 days</div>\n'
+        html += f'            <div class="stat-value">{self._escape_html(withdrawal_min)} - {self._escape_html(withdrawal_max)}</div>\n'
         html += '        </div>\n'
         html += '        <div class="stat-item">\n'
         html += '            <div class="stat-label">Min Deposit</div>\n'
-        html += '            <div class="stat-value highlight">£10</div>\n'
+        html += f'            <div class="stat-value highlight">{self._escape_html(min_deposit)}</div>\n'
         html += '        </div>\n'
         html += '        <div class="stat-item">\n'
-        html += '            <div class="stat-label">Rating</div>\n'
-        html += f'            <div class="stat-value">{self._escape_html(rating)}</div>\n'
+        if tp_rating:
+            html += '            <div class="stat-label">Trustpilot</div>\n'
+            html += f'            <div class="stat-value">{self._escape_html(tp_rating)}/{self._escape_html(tp_total)}</div>\n'
+        else:
+            html += '            <div class="stat-label">Rating</div>\n'
+            html += f'            <div class="stat-value">{self._escape_html(rating)}</div>\n'
         html += '        </div>\n'
         html += '    </div>\n\n'
 
@@ -1430,49 +1711,79 @@ class PageBuilder:
 
         html += '        <div class="tab-content">\n'
 
-        # Overview Tab with rating breakdown table and CTA
+        # Overview Tab with intro paragraph, rating breakdown table and CTA
         html += f'            <div class="tab-pane active" role="tabpanel" id="{platform_id}-overview" aria-labelledby="tab-{platform_id}-overview">\n'
         html += f'                <h3>How Do We Rate {self._escape_html(casino_name)}?</h3>\n'
-        overview_content = tab_content.get('overview', '')
-        if overview_content:
-            html += f'                {overview_content}\n\n'
+
+        # Add intro paragraph from document
+        sections = document.get('sections', [])
+        intro_paragraph = ''
+        if sections and sections[0].get('level') == 1:
+            intro_content = sections[0].get('content', '')
+            if intro_content:
+                # Get first paragraph (first sentence or first line)
+                intro_lines = [line.strip() for line in intro_content.split('\n') if line.strip()]
+                if intro_lines:
+                    intro_paragraph = intro_lines[0]
+
+        if intro_paragraph:
+            html += f'                <p>{self._escape_html(intro_paragraph)}</p>\n\n'
         else:
-            html += f'                <p>{self._escape_html(casino_name)} is a licensed online casino offering a wide range of games and features.</p>\n\n'
+            overview_content = tab_content.get('overview', '')
+            if overview_content:
+                html += f'                {overview_content}\n\n'
+            else:
+                html += f'                <p>{self._escape_html(casino_name)} is a licensed online casino offering a wide range of games and features.</p>\n\n'
 
         # Add overview image if available
         overview_img = self._get_image_html(images, f'{platform_id}-uk-deposit-bonus-promo.webp')
         if overview_img:
             html += f'                {overview_img}\n\n'
 
-        # Rating breakdown table
+        # Rating breakdown table using extracted ratings
+        rating_breakdown = casino_info.get('rating_breakdown', {})
         html += '                <p><strong>Rating Breakdown:</strong></p>\n'
         html += '                <table class="fee-table">\n'
         html += f'                    <caption class="visually-hidden">{self._escape_html(casino_name)} Rating Breakdown</caption>\n'
         html += '                    <tbody>\n'
-        html += '                        <tr class="fee-row">\n'
-        html += '                            <th scope="row" class="fee-label">Licensing & Legitimacy</th>\n'
-        html += '                            <td class="fee-value free">5/5 - Verified licenses</td>\n'
-        html += '                        </tr>\n'
-        html += '                        <tr class="fee-row">\n'
-        html += '                            <th scope="row" class="fee-label">Game Selection</th>\n'
-        html += '                            <td class="fee-value free">5/5 - Extensive library</td>\n'
-        html += '                        </tr>\n'
-        html += '                        <tr class="fee-row">\n'
-        html += '                            <th scope="row" class="fee-label">Payment Speed</th>\n'
-        html += '                            <td class="fee-value">4/5 - Fast when verified</td>\n'
-        html += '                        </tr>\n'
-        html += '                        <tr class="fee-row">\n'
-        html += '                            <th scope="row" class="fee-label">Customer Service</th>\n'
-        html += '                            <td class="fee-value">3/5 - 24/7 chat available</td>\n'
-        html += '                        </tr>\n'
-        html += '                        <tr class="fee-row">\n'
-        html += '                            <th scope="row" class="fee-label">User Satisfaction</th>\n'
-        html += '                            <td class="fee-value">3/5 - Mixed reviews</td>\n'
-        html += '                        </tr>\n'
-        html += '                        <tr class="fee-row">\n'
-        html += '                            <th scope="row" class="fee-label">Mobile Experience</th>\n'
-        html += '                            <td class="fee-value free">5/5 - Excellent apps</td>\n'
-        html += '                        </tr>\n'
+
+        # Default ratings with descriptions
+        default_ratings = {
+            'Licensing & Legitimacy': '5/5 - Verified licenses',
+            'Game Selection': '5/5 - Extensive library',
+            'Payment Speed': '2/5 - Fast when verified',
+            'Customer Service': '2/5 - 24/7 chat available',
+            'User Satisfaction': '2/5 - Mixed reviews',
+            'Bonus Value': '4/5 - Fair wagering',
+            'Mobile Experience': '5/5 - Excellent apps'
+        }
+
+        # Use extracted ratings if available
+        for category, default_value in default_ratings.items():
+            # Try to find matching category in extracted ratings
+            rating_value = None
+            for extracted_cat, extracted_rating in rating_breakdown.items():
+                if extracted_cat in category or category in extracted_cat:
+                    # Use extracted rating with default description
+                    desc_part = default_value.split(' - ')[-1] if ' - ' in default_value else ''
+                    rating_value = f"{extracted_rating}{' - ' + desc_part if desc_part else ''}"
+                    break
+
+            if not rating_value:
+                rating_value = default_value
+
+            # Determine CSS class based on rating
+            try:
+                rating_num = float(rating_value.split('/')[0])
+                css_class = 'free' if rating_num >= 4 else ''
+            except:
+                css_class = ''
+
+            html += '                        <tr class="fee-row">\n'
+            html += f'                            <th scope="row" class="fee-label">{self._escape_html(category)}</th>\n'
+            html += f'                            <td class="fee-value {css_class}">{self._escape_html(rating_value)}</td>\n'
+            html += '                        </tr>\n'
+
         html += '                    </tbody>\n'
         html += '                </table>\n\n'
 
@@ -1487,7 +1798,9 @@ class PageBuilder:
         html += '                </div>\n'
         html += '            </div>\n\n'
 
-        # Bonuses Tab with table and CTA
+        # Bonuses Tab with table using extracted bonus details and CTA
+        bonus_details = casino_info.get('bonus_details', {})
+
         html += f'            <div class="tab-pane" role="tabpanel" id="{platform_id}-bonuses" aria-labelledby="tab-{platform_id}-bonuses">\n'
         html += f'                <h3>What Welcome Bonus Does {self._escape_html(casino_name)} Offer?</h3>\n'
         bonus_content = tab_content.get('bonuses', '')
@@ -1501,21 +1814,37 @@ class PageBuilder:
         if bonus_img:
             html += f'                {bonus_img}\n\n'
 
-        # Bonus details table
+        # Bonus details table with extracted data
+        bonus_amount = bonus_details.get('bonus_amount', '100% up to £100')
+        free_spins = bonus_details.get('free_spins')
+        min_deposit = bonus_details.get('min_deposit', '£10')
+        wagering = bonus_details.get('wagering', '30x')
+        max_bet_slots = bonus_details.get('max_bet_slots', '£5/spin')
+        max_bet_table = bonus_details.get('max_bet_table', '£10/round')
+
         html += '                <table class="fee-table">\n'
         html += '                    <caption class="visually-hidden">Welcome Bonus Details</caption>\n'
         html += '                    <tbody>\n'
         html += '                        <tr class="fee-row">\n'
         html += '                            <th scope="row" class="fee-label">Bonus Amount</th>\n'
-        html += '                            <td class="fee-value free">100% up to £100</td>\n'
+        html += f'                            <td class="fee-value free">{self._escape_html(bonus_amount)}</td>\n'
         html += '                        </tr>\n'
+        if free_spins:
+            html += '                        <tr class="fee-row">\n'
+            html += '                            <th scope="row" class="fee-label">Free Spins</th>\n'
+            html += f'                            <td class="fee-value free">{self._escape_html(free_spins)}</td>\n'
+            html += '                        </tr>\n'
         html += '                        <tr class="fee-row">\n'
         html += '                            <th scope="row" class="fee-label">Minimum Deposit</th>\n'
-        html += '                            <td class="fee-value">£10</td>\n'
+        html += f'                            <td class="fee-value">{self._escape_html(min_deposit)}</td>\n'
         html += '                        </tr>\n'
         html += '                        <tr class="fee-row">\n'
         html += '                            <th scope="row" class="fee-label">Wagering Requirements</th>\n'
-        html += '                            <td class="fee-value">30x bonus + deposit</td>\n'
+        html += f'                            <td class="fee-value">{self._escape_html(wagering)} bonus + deposit</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Max Bet While Wagering</th>\n'
+        html += f'                            <td class="fee-value">{self._escape_html(max_bet_slots)} (slots), {self._escape_html(max_bet_table)} (tables)</td>\n'
         html += '                        </tr>\n'
         html += '                        <tr class="fee-row">\n'
         html += '                            <th scope="row" class="fee-label">Time Limit</th>\n'
@@ -1542,7 +1871,9 @@ class PageBuilder:
         html += '                </div>\n'
         html += '            </div>\n\n'
 
-        # Games Tab with CTA
+        # Games Tab with software providers table and CTA
+        software_providers = casino_info.get('software_providers', [])
+
         html += f'            <div class="tab-pane" role="tabpanel" id="{platform_id}-games" aria-labelledby="tab-{platform_id}-games">\n'
         html += f'                <h3 id="games">How Many Games Does {self._escape_html(casino_name)} Have?</h3>\n'
         games_content = tab_content.get('games', '')
@@ -1564,13 +1895,49 @@ class PageBuilder:
         html += '                    <li><strong>Jackpots:</strong> Progressive and fixed jackpot games</li>\n'
         html += '                </ul>\n\n'
 
+        # Software Providers table if data is available
+        if software_providers:
+            html += '                <h4>Software Providers</h4>\n'
+            html += '                <table class="fee-table">\n'
+            html += '                    <caption class="visually-hidden">Software Provider Availability</caption>\n'
+            html += '                    <thead>\n'
+            html += '                        <tr>\n'
+            html += '                            <th scope="col">Provider</th>\n'
+            html += '                            <th scope="col">Slots</th>\n'
+            html += '                            <th scope="col">Live</th>\n'
+            html += '                            <th scope="col">Tables</th>\n'
+            html += '                            <th scope="col">Jackpots</th>\n'
+            html += '                        </tr>\n'
+            html += '                    </thead>\n'
+            html += '                    <tbody>\n'
+
+            for provider in software_providers:
+                name = provider.get('name', '')
+                slots = '✓' if provider.get('slots') else '✗'
+                live = '✓' if provider.get('live') else '✗'
+                tables = '✓' if provider.get('tables') else '✗'
+                jackpots = '✓' if provider.get('jackpots') else '✗'
+
+                html += '                        <tr class="fee-row">\n'
+                html += f'                            <th scope="row" class="fee-label">{self._escape_html(name)}</th>\n'
+                html += f'                            <td class="fee-value" style="text-align: center;">{slots}</td>\n'
+                html += f'                            <td class="fee-value" style="text-align: center;">{live}</td>\n'
+                html += f'                            <td class="fee-value" style="text-align: center;">{tables}</td>\n'
+                html += f'                            <td class="fee-value" style="text-align: center;">{jackpots}</td>\n'
+                html += '                        </tr>\n'
+
+            html += '                    </tbody>\n'
+            html += '                </table>\n\n'
+
         html += '                <div class="cta-section">\n'
         html += f'                    <a href="https://b3i.tech/visit/{platform_id}" class="cta-button" rel="nofollow noopener noreferrer" target="_blank" aria-label="Explore games (opens in new window)">\n'
         html += '                        Explore All Games\n'
         html += '                        <span class="visually-hidden">(opens in new window)</span>\n'
         html += '                        <span aria-hidden="true">→</span>\n'
         html += '                    </a>\n'
-        html += '                    <p class="cta-note">1,000+ games • High RTP • Demo mode available</p>\n'
+        game_count_display = stats.get('game_count', '1,000+')
+        rtp_display = stats.get('rtp', 'High RTP')
+        html += f'                    <p class="cta-note">{self._escape_html(game_count_display)} games • {self._escape_html(rtp_display)}% RTP • Demo mode available</p>\n'
         html += '                </div>\n'
         html += '            </div>\n\n'
 
