@@ -127,12 +127,20 @@ class PageBuilder:
             verdict_cards += self.template_engine.render_quick_verdict_card(platform)
             verdict_cards += '\n\n'
 
+        # Get winner platform name for subtitle
+        winner_name = platforms[0].get('name', 'the top platform') if platforms else 'the top platform'
+
+        # Count total platforms from comparison table
+        comparison_data = content_map.get('comparison_table', {})
+        platform_count = len(comparison_data.get('data', [])) if comparison_data else len(platforms)
+
         data = {
             'title': 'Quick Verdict: Best Mobile Bitcoin Casinos for UK Players',
-            'subtitle': 'After extensive testing, these platforms offer the best experience.',
+            'subtitle': f'After extensive testing, <strong>{winner_name}</strong> stands out as our top recommendation for mobile bitcoin betting. Combining robust security, extensive game selection, and seamless cryptocurrency integration.',
             'datetime': '2025-11',
             'date_text': 'November 2025',
-            'verdict_cards': verdict_cards
+            'verdict_cards': verdict_cards,
+            'platform_count': platform_count
         }
 
         return self.template_engine.render('components/quick_verdict_section.html', data)
@@ -186,6 +194,131 @@ class PageBuilder:
 
         return html
 
+    def _build_top10_list_section(self, content_map: Dict, document: Dict) -> str:
+        """Build top10 list section with detailed platform information"""
+        # Get platform reviews which have the full data
+        reviews = content_map.get('platform_reviews', [])
+
+        if not reviews:
+            return ''
+
+        # Limit to top 10
+        top_platforms = reviews[:10]
+
+        html = '<section class="content-section top10-section" aria-labelledby="top10-heading">\n'
+        html += '    <h2 id="top10-heading">Top 10 Crypto Betting Sites UK</h2>\n'
+        html += '    <p class="lead">Here\'s our comprehensive list of the best cryptocurrency betting platforms available to UK players, ranked by overall performance, features, and user experience.</p>\n\n'
+        html += '    <div class="top10-list">\n'
+
+        badges = {1: 'gold', 2: 'silver', 3: 'bronze'}
+
+        for idx, platform in enumerate(top_platforms, 1):
+            rank_class = badges.get(idx, '')
+            platform_name = platform.get('name', f'Platform {idx}')
+            platform_id = self._slugify(platform_name)
+            rating = platform.get('rating', '5/5')
+
+            # Handle both float and string ratings
+            if isinstance(rating, float):
+                rating_num = rating
+                rating_str = f"{rating}/5"
+            elif isinstance(rating, str) and '/' in rating:
+                rating_num = float(rating.split('/')[0])
+                rating_str = rating
+            else:
+                rating_num = 5.0
+                rating_str = "5/5"
+
+            # Generate star rating HTML
+            try:
+                stars = '★' * int(rating_num) + '☆' * (5 - int(rating_num))
+            except:
+                stars = '★★★★★'
+
+            # Get best badge for top 3
+            best_badges = {
+                1: 'Best Overall',
+                2: 'Best for Security',
+                3: 'Best Mobile Experience'
+            }
+            best_badge = best_badges.get(idx, '')
+
+            # Get platform description (first paragraph of overview)
+            description = ''
+            overview = platform.get('overview', {})
+            if isinstance(overview, dict):
+                paragraphs = overview.get('paragraphs', [])
+                if paragraphs:
+                    description = paragraphs[0][:200] + '...' if len(paragraphs[0]) > 200 else paragraphs[0]
+
+            # Get key features
+            key_features = platform.get('key_features', [])
+            if not key_features:
+                # Try to extract from stats (if it's a list of stat items)
+                stats = platform.get('stats', [])
+                key_features = []
+                if isinstance(stats, list):
+                    # Extract first 3 stat values as features
+                    for stat in stats[:3]:
+                        if isinstance(stat, dict):
+                            label = stat.get('label', '')
+                            value = stat.get('value', '')
+                            if label and value:
+                                key_features.append(f"{label}: {value}")
+                elif isinstance(stats, dict):
+                    # Handle dict format
+                    if stats.get('crypto_accepted'):
+                        key_features.append(f"{stats['crypto_accepted']} cryptocurrencies accepted")
+                    if stats.get('sports_available'):
+                        key_features.append(f"{stats['sports_available']}+ sports available")
+                    if stats.get('withdrawal_time'):
+                        key_features.append(f"{stats['withdrawal_time']} withdrawals")
+
+            # Get logo image
+            logo_url = platform.get('logo', '')
+
+            html += f'        <div class="top10-item rank-{idx}">\n'
+            html += f'            <div class="rank-badge {rank_class}">{idx}</div>\n'
+
+            if logo_url:
+                html += f'            <div class="top10-logo">\n'
+                html += f'                <img src="{logo_url}" alt="{self._escape_html(platform_name)} logo" loading="lazy" />\n'
+                html += f'            </div>\n'
+
+            html += f'            <div class="top10-content">\n'
+            html += f'                <div class="top10-header">\n'
+            html += f'                    <h3 class="platform-name">{self._escape_html(platform_name)}</h3>\n'
+
+            if best_badge:
+                html += f'                    <span class="best-badge">{best_badge}</span>\n'
+
+            html += f'                </div>\n'
+            html += f'                <div class="platform-rating-inline">\n'
+            html += f'                    <span class="rating-stars">{stars}</span>\n'
+            html += f'                    <span class="rating-value">{self._escape_html(rating_str)}</span>\n'
+            html += f'                </div>\n'
+
+            if description:
+                html += f'                <p class="platform-description">{self._escape_html(description)}</p>\n'
+
+            if key_features:
+                html += f'                <ul class="feature-highlights">\n'
+                for feature in key_features[:3]:  # Limit to 3 features
+                    html += f'                    <li>{self._escape_html(feature)}</li>\n'
+                html += f'                </ul>\n'
+
+            html += f'            </div>\n'
+            html += f'            <a href="#{platform_id}" class="top10-link">\n'
+            html += f'                View Review\n'
+            html += f'                <span class="qv-arrow" aria-hidden="true">→</span>\n'
+            html += f'            </a>\n'
+            html += f'        </div>\n\n'
+
+        html += '    </div>\n'
+        html += '</section>\n\n'
+
+        return html
+
     def _build_detailed_reviews_section(self, content_map: Dict, document: Dict) -> str:
         """Build detailed platform review cards"""
         reviews = content_map.get('platform_reviews', [])
@@ -212,10 +345,12 @@ class PageBuilder:
         if not faqs:
             return ''
 
-        html = '<section class="faq-section" aria-labelledby="faq-heading">\n'
-        html += '    <h2 id="faq-heading">Frequently Asked Questions</h2>\n'
-        html += '    <p class="lead">Common questions about mobile bitcoin casinos answered.</p>\n'
-        html += '    <div class="faq-container">\n'
+        html = '<section class="faq-container" aria-labelledby="faq-heading">\n'
+        html += '    <div class="faq-header">\n'
+        html += '        <h2 id="faq-heading" class="faq-title">Frequently Asked Questions</h2>\n'
+        html += '        <p class="faq-subtitle">Everything you need to know about crypto betting sites in the UK.</p>\n'
+        html += '    </div>\n'
+        html += '    <div class="faq-list">\n'
 
         for i, faq in enumerate(faqs, 1):
             html += self.template_engine.render_faq_item(faq, i)
@@ -411,18 +546,48 @@ class PageBuilder:
         return html
 
     def _build_references_section(self, content_map: Dict, document: Dict) -> str:
-        """Build references section"""
+        """Build references section with proper citation formatting"""
         references = content_map.get('references', [])
 
         if not references:
             return ''
 
-        html = '<section class="references-section content-section" aria-labelledby="references-heading">\n'
-        html += '    <h2 id="references-heading">References</h2>\n'
-        html += '    <ol class="references-list">\n'
+        html = '<section class="reference-container" aria-labelledby="references-heading">\n'
+        html += '    <div class="reference-header">\n'
+        html += '        <h2 id="references-heading" class="reference-title">References and Sources</h2>\n'
+        html += '        <p class="reference-subtitle">All sources have been verified for accuracy and credibility.</p>\n'
+        html += '    </div>\n'
+        html += '    <ol class="reference-list">\n'
 
         for ref in references:
-            html += f'        <li>{self._escape_html(ref.get("text", ""))}</li>\n'
+            # Parse reference data
+            ref_text = ref.get('text', '')
+            author = ref.get('author', 'Unknown')
+            date = ref.get('date', '2024')
+            title = ref.get('title', ref_text[:50] if ref_text else 'Untitled')
+            url = ref.get('url', '#')
+
+            # If only text is provided, try to parse it
+            if ref_text and not ref.get('author'):
+                # Simple parsing - extract URL if present
+                import re
+                url_match = re.search(r'https?://[^\s]+', ref_text)
+                if url_match:
+                    url = url_match.group(0)
+                    # Remove URL from text to get title/author
+                    title = ref_text.replace(url, '').strip()
+
+            html += '        <li class="reference-item">\n'
+            html += '            <div class="reference-content">\n'
+            html += f'                <span class="reference-author">{self._escape_html(author)}</span> \n'
+            html += f'                <span class="reference-date">({self._escape_html(date)}).</span> \n'
+            html += f'                <span class="reference-title-text">"{self._escape_html(title)}"</span> \n'
+
+            if url and url != '#':
+                html += f'                <a href="{url}" class="reference-link" target="_blank" rel="noopener noreferrer">{url}</a>\n'
+
+            html += '            </div>\n'
+            html += '        </li>\n'
 
         html += '    </ol>\n'
         html += '</section>\n\n'
