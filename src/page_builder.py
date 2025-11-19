@@ -16,6 +16,31 @@ class PageBuilder:
 
         self.template_engine = TemplateEngine()
 
+    def build_page(self, document: Dict[str, Any],
+                   images: Dict = None,
+                   affiliate_links: Dict = None) -> str:
+        """Build a page, auto-detecting the page type"""
+        page_type = self._detect_page_type(document)
+
+        if page_type == 'single_casino_review':
+            return self.build_single_casino_review_page(document, images, affiliate_links)
+        else:
+            return self.build_platform_comparison_page(document, images, affiliate_links)
+
+    def _detect_page_type(self, document: Dict[str, Any]) -> str:
+        """Detect whether this is a comparison page or single casino review"""
+        sections = document.get('sections', [])
+
+        # Check for comparison table or multiple platform reviews
+        has_comparison = any(s.get('type') == 'comparison_table' for s in sections)
+        platform_count = sum(1 for s in sections if s.get('type') == 'platform_review')
+
+        # If multiple platforms or comparison table, it's a comparison page
+        if has_comparison or platform_count > 1:
+            return 'platform_comparison'
+
+        return 'single_casino_review'
+
     def build_platform_comparison_page(self, document: Dict[str, Any],
                                       images: Dict = None,
                                       affiliate_links: Dict = None) -> str:
@@ -36,6 +61,44 @@ class PageBuilder:
 
         # Assemble final page
         return self._assemble_page(document, sections_html)
+
+    def build_single_casino_review_page(self, document: Dict[str, Any],
+                                        images: Dict = None,
+                                        affiliate_links: Dict = None) -> str:
+        """Build a single casino review page"""
+
+        page_type = 'single_casino_review'
+        section_order = self.structure_config['page_types'][page_type]['section_order']
+
+        # Extract and organize content
+        content_map = self._map_single_review_content(document, images, affiliate_links)
+
+        # Build page sections in order
+        sections_html = []
+        for section_name in section_order:
+            section_html = self._build_section(section_name, content_map, document)
+            if section_html:
+                sections_html.append(section_html)
+
+        # Assemble final page
+        return self._assemble_page(document, sections_html)
+
+    def _map_single_review_content(self, document: Dict, images: Dict, affiliate_links: Dict) -> Dict:
+        """Map content for single casino review"""
+
+        metadata = document.get('metadata', {})
+        sections = document.get('sections', [])
+
+        content_map = {
+            'metadata': metadata,
+            'article_header': self._extract_article_header(sections),
+            'casino_info': self._extract_casino_info(sections),
+            'content_sections': sections,  # All sections for flexible rendering
+            'faqs': self._extract_faqs(sections),
+            'references': self._extract_references(sections)
+        }
+
+        return content_map
 
     def _map_content_to_sections(self, document: Dict, images: Dict, affiliate_links: Dict) -> Dict:
         """Map parsed document content to template sections"""
@@ -944,6 +1007,205 @@ class PageBuilder:
                 lines = [l.strip() for l in content.split('\n') if l.strip()]
                 return [{'text': line} for line in lines]
         return []
+
+    def _extract_casino_info(self, sections: List[Dict]) -> Dict:
+        """Extract basic casino information from early sections"""
+        casino_info = {
+            'name': '',
+            'rating': '0/10',
+            'pros': [],
+            'cons': []
+        }
+
+        # Try to extract casino name from title
+        if sections and sections[0].get('level') == 1:
+            title = sections[0].get('heading', '')
+            # Extract casino name from patterns like "Is Casumo Worth It" or "888 Casino Review"
+            import re
+
+            # Try pattern "Is X Worth It"
+            worth_match = re.search(r'Is\s+([A-Z][a-zA-Z0-9\s]+?)\s+Worth', title)
+            if worth_match:
+                casino_info['name'] = worth_match.group(1).strip()
+            # Try pattern "X Review 2025"
+            elif 'Review' in title:
+                casino_info['name'] = re.sub(r'\s+Review.*', '', title).strip()
+                casino_info['name'] = re.sub(r'\s+\d{4}.*', '', casino_info['name']).strip()
+
+        # Look for rating in early sections
+        for section in sections[:10]:
+            content = section.get('content', '')
+            heading = section.get('heading', '')
+
+            # Look for rating pattern like "Overall: 3.6/5" or "6.9/10"
+            import re
+            rating_match = re.search(r'Overall[:\s]+(\d+\.?\d*)/(\d+)', content + ' ' + heading, re.IGNORECASE)
+            if rating_match:
+                score = rating_match.group(1)
+                total = rating_match.group(2)
+                casino_info['rating'] = f"{score}/{total}"
+                break
+
+        return casino_info
+
+    # ===== Single Casino Review Section Builders =====
+
+    def _build_single_quick_verdict_section(self, content_map: Dict, document: Dict) -> str:
+        """Build quick verdict for single casino review"""
+        casino_info = content_map.get('casino_info', {})
+        casino_name = casino_info.get('name', 'This Casino')
+        rating = casino_info.get('rating', '0/10')
+
+        html = '<section class="quick-verdict">\n'
+        html += '    <div class="qv-header">\n'
+        html += '        <h2 class="qv-title">Quick Verdict: Should You Play at ' + self._escape_html(casino_name) + '?</h2>\n'
+        html += '        <p class="qv-subtitle">After extensive testing, ' + self._escape_html(casino_name) + ' earns a <strong>' + self._escape_html(rating) + '</strong> rating.</p>\n'
+        html += '        <div class="qv-updated">Last updated: <time datetime="2025-11">November 2025</time></div>\n'
+        html += '    </div>\n'
+        html += '    <div class="qv-trust-signals">\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Licensed & Regulated</div>\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Secure Gaming</div>\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Fair Play Certified</div>\n'
+        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Responsible Gambling</div>\n'
+        html += '    </div>\n'
+        html += '</section>\n\n'
+
+        return html
+
+    def _build_single_platform_card_section(self, content_map: Dict, document: Dict) -> str:
+        """Build single platform card with tabs"""
+        casino_info = content_map.get('casino_info', {})
+        casino_name = casino_info.get('name', 'Casino')
+        rating = casino_info.get('rating', '0/10')
+        platform_id = self._slugify(casino_name)
+
+        # Extract rating number for stars
+        try:
+            rating_num = float(rating.split('/')[0])
+            total_stars = int(rating.split('/')[1])
+            stars = '★' * int(rating_num) + '☆' * (total_stars - int(rating_num))
+        except:
+            stars = '★★★★★☆☆☆☆☆'
+            rating = '0/10'
+
+        html = '<div class="platform-card" id="detailed-review">\n'
+        html += '    <div class="card-header">\n'
+        html += f'        <div class="platform-rating">{stars} {self._escape_html(rating)}</div>\n'
+        html += '        <div class="header-content">\n'
+        html += f'            <p class="platform-tagline">{self._escape_html(casino_name)} • Detailed Review</p>\n'
+        html += '        </div>\n'
+        html += '    </div>\n\n'
+
+        html += '    <div class="stats-bar">\n'
+        html += '        <div class="stat-item">\n'
+        html += '            <div class="stat-label">Rating</div>\n'
+        html += f'            <div class="stat-value highlight">{self._escape_html(rating)}</div>\n'
+        html += '        </div>\n'
+        html += '    </div>\n\n'
+
+        html += '    <div class="tabs-container">\n'
+        html += '        <div class="tab-nav" role="tablist">\n'
+        html += f'            <button class="tab-button active" role="tab" data-tab="{platform_id}-overview" aria-selected="true">Overview</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-bonuses">Bonuses</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-games">Games</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-proscons">Pros & Cons</button>\n'
+        html += '        </div>\n\n'
+
+        html += '        <div class="tab-content">\n'
+        html += f'            <div class="tab-pane active" id="{platform_id}-overview">\n'
+        html += f'                <h3>About {self._escape_html(casino_name)}</h3>\n'
+        html += '                <p>Detailed casino review information...</p>\n'
+        html += '            </div>\n'
+        html += f'            <div class="tab-pane" id="{platform_id}-bonuses">\n'
+        html += '                <h3>Bonuses & Promotions</h3>\n'
+        html += '            </div>\n'
+        html += f'            <div class="tab-pane" id="{platform_id}-games">\n'
+        html += '                <h3>Game Selection</h3>\n'
+        html += '            </div>\n'
+        html += f'            <div class="tab-pane" id="{platform_id}-proscons">\n'
+        html += '                <div class="proscons-grid">\n'
+        html += '                    <div class="pros-section">\n'
+        html += '                        <h4><span aria-hidden="true">✓</span> Pros</h4>\n'
+        html += '                        <ul class="pros-list">\n'
+        html += '                            <li>Licensed and regulated</li>\n'
+        html += '                        </ul>\n'
+        html += '                    </div>\n'
+        html += '                    <div class="cons-section">\n'
+        html += '                        <h4><span aria-hidden="true">✗</span> Cons</h4>\n'
+        html += '                        <ul class="cons-list">\n'
+        html += '                            <li>Varies by region</li>\n'
+        html += '                        </ul>\n'
+        html += '                    </div>\n'
+        html += '                </div>\n'
+        html += '            </div>\n'
+        html += '        </div>\n'
+        html += '    </div>\n\n'
+
+        html += '    <div class="risk-warning">\n'
+        html += '        <p><strong>18+ Only:</strong> Please gamble responsibly. Visit BeGambleAware.org for support.</p>\n'
+        html += '    </div>\n'
+        html += '</div>\n\n'
+
+        return html
+
+    def _build_content_sections_section(self, content_map: Dict, document: Dict) -> str:
+        """Build general content sections"""
+        sections = content_map.get('content_sections', [])
+        html = ''
+
+        # Skip header, FAQ, and reference sections
+        skip_patterns = ['FAQ', 'Frequently Asked', 'Reference', 'Citation', 'Final Verdict', 'Conclusion']
+
+        for section in sections:
+            heading = section.get('heading', '')
+            content = section.get('content', '')
+            level = section.get('level', 2)
+
+            # Skip if it's a special section we handle elsewhere
+            if any(pattern in heading for pattern in skip_patterns):
+                continue
+
+            # Only render h2 and h3 sections
+            if level in [2, 3]:
+                heading_id = self._slugify(heading)
+
+                if level == 2:
+                    html += f'<section class="content-section" aria-labelledby="{heading_id}">\n'
+                    html += f'    <h2 id="{heading_id}">{self._escape_html(heading)}</h2>\n'
+                elif level == 3:
+                    html += f'    <h3>{self._escape_html(heading)}</h3>\n'
+
+                if content:
+                    # Simple paragraph rendering for now
+                    paragraphs = [p.strip() for p in content.split('\n') if p.strip()]
+                    for para in paragraphs:
+                        html += f'    <p>{self._escape_html(para)}</p>\n'
+
+                if level == 2:
+                    html += '</section>\n\n'
+
+        return html
+
+    def _build_faq_simple_section(self, content_map: Dict, document: Dict) -> str:
+        """Build FAQ section with simple h2/h3 format (no accordion)"""
+        faqs = content_map.get('faqs', [])
+
+        if not faqs:
+            return ''
+
+        html = '<section class="content-section">\n'
+        html += '    <h2>Frequently Asked Questions</h2>\n\n'
+
+        for faq in faqs:
+            question = faq.get('question', '')
+            answer = faq.get('answer', '')
+
+            html += f'    <h3>{self._escape_html(question)}</h3>\n'
+            html += f'    <p>{self._escape_html(answer)}</p>\n\n'
+
+        html += '</section>\n\n'
+
+        return html
 
     # ===== Enhanced rendering methods for better visual styling =====
 
