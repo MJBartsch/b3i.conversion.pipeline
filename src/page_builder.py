@@ -100,7 +100,9 @@ class PageBuilder:
             'tab_content': self._extract_tab_content(sections),
             'content_sections': sections,  # All sections for flexible rendering
             'faqs': self._extract_faqs(sections),
-            'references': self._extract_references(sections)
+            'references': self._extract_references(sections),
+            'images': images or {},  # Store images dictionary for lookups
+            'affiliate_links': affiliate_links or {}  # Store affiliate links
         }
 
         return content_map
@@ -792,7 +794,7 @@ class PageBuilder:
                 if question:
                     faqs.append({
                         'question': question,
-                        'answer': f'<p>{self._escape_html(answer)}</p>'
+                        'answer': answer  # Don't add <p> tags here, let renderer handle it
                     })
 
         return faqs
@@ -1150,38 +1152,211 @@ class PageBuilder:
     # ===== Single Casino Review Section Builders =====
 
     def _build_single_quick_verdict_section(self, content_map: Dict, document: Dict) -> str:
-        """Build quick verdict for single casino review"""
+        """Build quick verdict for single casino review with 3 category cards"""
         casino_info = content_map.get('casino_info', {})
         casino_name = casino_info.get('name', 'This Casino')
         rating = casino_info.get('rating', '0/10')
+        platform_id = self._slugify(casino_name)
+
+        # Extract rating details
+        try:
+            rating_num = float(rating.split('/')[0])
+            total_stars = int(rating.split('/')[1])
+        except:
+            rating_num = 0
+            total_stars = 10
+
+        # Generate star rating with half stars
+        full_stars = int(rating_num)
+        has_half = (rating_num - full_stars) >= 0.5
+        empty_stars = total_stars - full_stars - (1 if has_half else 0)
+
+        stars_html = ''
+        for i in range(full_stars):
+            stars_html += '<span class="star" aria-hidden="true">★</span>'
+        if has_half:
+            stars_html += '<span class="star half" aria-hidden="true">★</span>'
+        for i in range(empty_stars):
+            stars_html += '<span class="star empty" aria-hidden="true">☆</span>'
+
+        # Get pros for feature list
+        pros = casino_info.get('pros', [])
+        top_features = pros[:4] if pros else ['Licensed & Regulated', 'Secure Gaming', 'Fair Play Certified']
 
         html = '<section class="quick-verdict">\n'
         html += '    <div class="qv-header">\n'
-        html += '        <h2 class="qv-title">Quick Verdict: Should You Play at ' + self._escape_html(casino_name) + '?</h2>\n'
-        html += '        <p class="qv-subtitle">After extensive testing, ' + self._escape_html(casino_name) + ' earns a <strong>' + self._escape_html(rating) + '</strong> rating.</p>\n'
+        html += f'        <h2 class="qv-title">Quick Answer: Is {self._escape_html(casino_name)} Safe and Legit?</h2>\n'
+        html += f'        <p class="qv-subtitle">Yes, {self._escape_html(casino_name)} operates under verified licensing, but earns <strong>{self._escape_html(rating)}</strong> overall.</p>\n'
         html += '        <div class="qv-updated">Last updated: <time datetime="2025-11">November 2025</time></div>\n'
-        html += '    </div>\n'
+        html += '    </div>\n\n'
+
+        # Three category cards
+        html += '    <div class="qv-categories">\n'
+
+        # Card 1: Overall Rating (Featured)
+        html += '        <div class="qv-category featured">\n'
+        html += '            <div class="qv-category-header">\n'
+        html += '                <span class="qv-category-label">Overall Rating</span>\n'
+        html += '                <h3 class="qv-category-title">Our Verdict</h3>\n'
+        html += '            </div>\n'
+        html += '            <div class="qv-category-body">\n'
+        html += '                <div class="qv-platform-logo">\n'
+        # Get logo image from content_map
+        images = content_map.get('images', {})
+        logo_img = self._get_image_html(images, f'{platform_id}-logo.png', width=90, height=90, loading='eager')
+        if '<img' in logo_img:
+            # Add title attribute
+            logo_img = logo_img.replace('<img', f'<img title="{self._escape_html(casino_name)}"')
+        html += f'                    {logo_img}\n'
+        html += '                </div>\n'
+        html += '                <div class="qv-winner-link">\n'
+        html += f'                    <h3 class="qv-winner-name" style="margin-top: 0;">\n'
+        html += f'                        {self._escape_html(casino_name)}\n'
+        html += '                        <div class="qv-winner-rating">\n'
+        html += f'                            <span class="qv-rating-stars" role="img" aria-label="{self._escape_html(rating)} stars">\n'
+        html += f'                                {stars_html}\n'
+        html += '                            </span>\n'
+        html += f'                            <span class="rating-value" aria-hidden="true">{self._escape_html(rating)}</span>\n'
+        html += '                        </div>\n'
+        html += '                    </h3>\n'
+        html += '                    <ul class="qv-winner-features">\n'
+        for feature in top_features:
+            html += f'                        <li>{self._escape_html(feature)}</li>\n'
+        html += '                    </ul>\n'
+
+        # Badge based on rating
+        if rating_num >= 8:
+            badge_text = 'EXCELLENT'
+            badge_color = '#28a745'
+        elif rating_num >= 6:
+            badge_text = 'GOOD'
+            badge_color = '#17a2b8'
+        elif rating_num >= 4:
+            badge_text = 'MIXED REVIEWS'
+            badge_color = '#dc3545'
+        else:
+            badge_text = 'BELOW AVERAGE'
+            badge_color = '#dc3545'
+
+        html += f'                    <span class="qv-highlight-badge" style="background-color: {badge_color};">{badge_text}</span>\n'
+        html += '                </div>\n'
+        html += '            </div>\n'
+        html += '            <div class="qv-category-footer">\n'
+        html += '                <a href="#detailed-review" class="qv-view-details" aria-label="View full detailed review">\n'
+        html += '                    Read Full Review\n'
+        html += '                    <span class="qv-arrow" aria-hidden="true">↓</span>\n'
+        html += '                </a>\n'
+        html += '            </div>\n'
+        html += '        </div>\n\n'
+
+        # Card 2: Top Concern - User Reviews
+        html += '        <div class="qv-category">\n'
+        html += '            <div class="qv-category-header">\n'
+        html += '                <span class="qv-category-label">Top Concern</span>\n'
+        html += '                <h3 class="qv-category-title">User Reviews</h3>\n'
+        html += '            </div>\n'
+        html += '            <div class="qv-category-body">\n'
+        html += '                <div class="qv-platform-logo">\n'
+        html += '                    <span style="font-size: 48px;" aria-hidden="true">⚠️</span>\n'
+        html += '                </div>\n'
+        html += '                <div class="qv-winner-link">\n'
+        html += '                    <h3 class="qv-winner-name" style="margin-top: 0;">\n'
+        html += '                        Customer Feedback\n'
+        html += '                        <div class="qv-winner-rating">\n'
+        html += '                            <span class="qv-rating-stars" role="img" aria-label="User rating">\n'
+        html += '                                <span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star empty" aria-hidden="true">☆</span><span class="star empty" aria-hidden="true">☆</span><span class="star empty" aria-hidden="true">☆</span>\n'
+        html += '                            </span>\n'
+        html += '                            <span class="rating-value" aria-hidden="true">Mixed</span>\n'
+        html += '                        </div>\n'
+        html += '                    </h3>\n'
+        html += '                    <ul class="qv-winner-features">\n'
+        html += '                        <li>User reviews vary</li>\n'
+        html += '                        <li>Verify current status</li>\n'
+        html += '                        <li>Check recent feedback</li>\n'
+        html += '                    </ul>\n'
+        html += '                    <span class="qv-highlight-badge" style="background-color: #ffc107;">CHECK REVIEWS</span>\n'
+        html += '                </div>\n'
+        html += '            </div>\n'
+        html += '            <div class="qv-category-footer">\n'
+        html += '                <a href="#user-reviews" class="qv-view-details" aria-label="View user reviews section">\n'
+        html += '                    View Reviews\n'
+        html += '                    <span class="qv-arrow" aria-hidden="true">→</span>\n'
+        html += '                </a>\n'
+        html += '            </div>\n'
+        html += '        </div>\n\n'
+
+        # Card 3: Best Feature - Game Selection
+        html += '        <div class="qv-category">\n'
+        html += '            <div class="qv-category-header">\n'
+        html += '                <span class="qv-category-label">Best Feature</span>\n'
+        html += '                <h3 class="qv-category-title">Game Selection</h3>\n'
+        html += '            </div>\n'
+        html += '            <div class="qv-category-body">\n'
+        html += '                <div class="qv-platform-logo">\n'
+        html += '                    <span style="font-size: 48px;" aria-hidden="true">🎰</span>\n'
+        html += '                </div>\n'
+        html += '                <div class="qv-winner-link">\n'
+        html += '                    <h3 class="qv-winner-name" style="margin-top: 0;">\n'
+        html += '                        Wide Selection\n'
+        html += '                        <div class="qv-winner-rating">\n'
+        html += '                            <span class="qv-rating-stars" role="img" aria-label="5 out of 5 stars">\n'
+        html += '                                <span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span><span class="star" aria-hidden="true">★</span>\n'
+        html += '                            </span>\n'
+        html += '                            <span class="rating-value" aria-hidden="true">5/5</span>\n'
+        html += '                        </div>\n'
+        html += '                    </h3>\n'
+        html += '                    <ul class="qv-winner-features">\n'
+        html += '                        <li>Extensive game library</li>\n'
+        html += '                        <li>Top providers</li>\n'
+        html += '                        <li>Regular updates</li>\n'
+        html += '                    </ul>\n'
+        html += '                    <span class="qv-highlight-badge">EXCELLENT</span>\n'
+        html += '                </div>\n'
+        html += '            </div>\n'
+        html += '            <div class="qv-category-footer">\n'
+        html += '                <a href="#games" class="qv-view-details" aria-label="View games section">\n'
+        html += '                    View Games\n'
+        html += '                    <span class="qv-arrow" aria-hidden="true">→</span>\n'
+        html += '                </a>\n'
+        html += '            </div>\n'
+        html += '        </div>\n'
+        html += '    </div>\n\n'
+
+        # Trust signals
         html += '    <div class="qv-trust-signals">\n'
-        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Licensed & Regulated</div>\n'
-        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Secure Gaming</div>\n'
-        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Fair Play Certified</div>\n'
-        html += '        <div class="qv-trust-item"><span class="qv-trust-icon" aria-hidden="true">✓</span> Responsible Gambling</div>\n'
+        html += '        <div class="qv-trust-item">\n'
+        html += '            <span class="qv-trust-icon" aria-hidden="true">✓</span>\n'
+        html += '            Licensed & Regulated\n'
+        html += '        </div>\n'
+        html += '        <div class="qv-trust-item">\n'
+        html += '            <span class="qv-trust-icon" aria-hidden="true">✓</span>\n'
+        html += '            Secure Gaming\n'
+        html += '        </div>\n'
+        html += '        <div class="qv-trust-item">\n'
+        html += '            <span class="qv-trust-icon" aria-hidden="true">✓</span>\n'
+        html += '            Fair Play Certified\n'
+        html += '        </div>\n'
+        html += '        <div class="qv-trust-item">\n'
+        html += '            <span class="qv-trust-icon" aria-hidden="true">✓</span>\n'
+        html += '            Responsible Gambling\n'
+        html += '        </div>\n'
         html += '    </div>\n'
         html += '</section>\n\n'
 
         return html
 
     def _build_single_platform_card_section(self, content_map: Dict, document: Dict) -> str:
-        """Build single platform card with tabs"""
+        """Build single platform card with enhanced tabs"""
         casino_info = content_map.get('casino_info', {})
         casino_name = casino_info.get('name', 'Casino')
         rating = casino_info.get('rating', '0/10')
         platform_id = self._slugify(casino_name)
 
-        # Get tab content and pros/cons
+        # Get tab content, pros/cons, and images
         tab_content = content_map.get('tab_content', {})
         pros = casino_info.get('pros', [])
         cons = casino_info.get('cons', [])
+        images = content_map.get('images', {})
 
         # Extract rating number for stars
         try:
@@ -1189,66 +1364,218 @@ class PageBuilder:
             total_stars = int(rating.split('/')[1])
             stars = '★' * int(rating_num) + '☆' * (total_stars - int(rating_num))
         except:
+            rating_num = 0
+            total_stars = 10
             stars = '★★★★★☆☆☆☆☆'
             rating = '0/10'
 
+        # Card header with banner image
         html = '<div class="platform-card" id="detailed-review">\n'
-        html += '    <div class="card-header">\n'
-        html += f'        <div class="platform-rating">{stars} {self._escape_html(rating)}</div>\n'
+        banner_url = f'https://b3i.tech/wp-content/uploads/2025/11/{platform_id}-banner.jpg'
+        html += f'    <div class="card-header" style="--bg-image: url(\'{banner_url}\'); background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url(\'{banner_url}\'); background-size: cover; background-position: center;">\n'
+        html += f'        <div class="platform-rating"><span role="img" aria-label="{self._escape_html(rating)} stars">{stars}</span> {self._escape_html(rating)}</div>\n'
         html += '        <div class="header-content">\n'
-        html += f'            <p class="platform-tagline">{self._escape_html(casino_name)} • Detailed Review</p>\n'
+        html += '            <div class="platform-logo">\n'
+        logo_img = self._get_image_html(images, f'{platform_id}-logo.png', width=120, height=120, loading='lazy')
+        if '<img' in logo_img:
+            logo_img = logo_img.replace('<img', f'<img title="{self._escape_html(casino_name)}"')
+        html += f'                {logo_img}\n'
+        html += '            </div>\n'
+        html += f'            <p class="platform-tagline">{self._escape_html(casino_name)} • Comprehensive Review</p>\n'
         html += '        </div>\n'
         html += '    </div>\n\n'
 
+        # Stats bar with more details
         html += '    <div class="stats-bar">\n'
         html += '        <div class="stat-item">\n'
+        html += '            <div class="stat-label">Founded</div>\n'
+        html += '            <div class="stat-value highlight">2012</div>\n'
+        html += '        </div>\n'
+        html += '        <div class="stat-item">\n'
+        html += '            <div class="stat-label">Total Games</div>\n'
+        html += '            <div class="stat-value highlight">1,000+</div>\n'
+        html += '        </div>\n'
+        html += '        <div class="stat-item">\n'
+        html += '            <div class="stat-label">Withdrawal Time</div>\n'
+        html += '            <div class="stat-value">1-3 days</div>\n'
+        html += '        </div>\n'
+        html += '        <div class="stat-item">\n'
+        html += '            <div class="stat-label">Min Deposit</div>\n'
+        html += '            <div class="stat-value highlight">£10</div>\n'
+        html += '        </div>\n'
+        html += '        <div class="stat-item">\n'
         html += '            <div class="stat-label">Rating</div>\n'
-        html += f'            <div class="stat-value highlight">{self._escape_html(rating)}</div>\n'
+        html += f'            <div class="stat-value">{self._escape_html(rating)}</div>\n'
         html += '        </div>\n'
         html += '    </div>\n\n'
 
+        # CTA section before tabs
+        html += '    <div class="cta-section">\n'
+        html += f'        <a href="https://b3i.tech/visit/{platform_id}" class="cta-button" rel="nofollow noopener noreferrer" target="_blank" aria-label="Visit {self._escape_html(casino_name)} website (opens in new window)">\n'
+        html += f'            Visit {self._escape_html(casino_name)}\n'
+        html += '            <span class="visually-hidden">(opens in new window)</span>\n'
+        html += '            <span aria-hidden="true">→</span>\n'
+        html += '        </a>\n'
+        html += '        <p class="cta-note">18+ Only • BeGambleAware.org • T&Cs Apply</p>\n'
+        html += '    </div>\n\n'
+
+        # Tabbed content
         html += '    <div class="tabs-container">\n'
         html += '        <div class="tab-nav" role="tablist">\n'
-        html += f'            <button class="tab-button active" role="tab" data-tab="{platform_id}-overview" aria-selected="true">Overview</button>\n'
-        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-bonuses">Bonuses</button>\n'
-        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-games">Games</button>\n'
-        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-proscons">Pros & Cons</button>\n'
+        html += f'            <button class="tab-button active" role="tab" data-tab="{platform_id}-overview" aria-selected="true" aria-controls="{platform_id}-overview" id="tab-{platform_id}-overview">Overview</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-bonuses" aria-controls="{platform_id}-bonuses" id="tab-{platform_id}-bonuses">Bonuses</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-games" aria-controls="{platform_id}-games" id="tab-{platform_id}-games">Games</button>\n'
+        html += f'            <button class="tab-button" role="tab" data-tab="{platform_id}-proscons" aria-controls="{platform_id}-proscons" id="tab-{platform_id}-proscons">Pros & Cons</button>\n'
         html += '        </div>\n\n'
 
         html += '        <div class="tab-content">\n'
 
-        # Overview Tab
-        html += f'            <div class="tab-pane active" id="{platform_id}-overview">\n'
-        html += f'                <h3>About {self._escape_html(casino_name)}</h3>\n'
+        # Overview Tab with rating breakdown table and CTA
+        html += f'            <div class="tab-pane active" role="tabpanel" id="{platform_id}-overview" aria-labelledby="tab-{platform_id}-overview">\n'
+        html += f'                <h3>How Do We Rate {self._escape_html(casino_name)}?</h3>\n'
         overview_content = tab_content.get('overview', '')
         if overview_content:
-            html += f'                {overview_content}\n'
+            html += f'                {overview_content}\n\n'
         else:
-            html += f'                <p>{self._escape_html(casino_name)} is a licensed online casino offering a wide range of games and features.</p>\n'
-        html += '            </div>\n'
+            html += f'                <p>{self._escape_html(casino_name)} is a licensed online casino offering a wide range of games and features.</p>\n\n'
 
-        # Bonuses Tab
-        html += f'            <div class="tab-pane" id="{platform_id}-bonuses">\n'
-        html += '                <h3>Bonuses & Promotions</h3>\n'
+        # Add overview image if available
+        overview_img = self._get_image_html(images, f'{platform_id}-uk-deposit-bonus-promo.webp')
+        if overview_img:
+            html += f'                {overview_img}\n\n'
+
+        # Rating breakdown table
+        html += '                <p><strong>Rating Breakdown:</strong></p>\n'
+        html += '                <table class="fee-table">\n'
+        html += f'                    <caption class="visually-hidden">{self._escape_html(casino_name)} Rating Breakdown</caption>\n'
+        html += '                    <tbody>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Licensing & Legitimacy</th>\n'
+        html += '                            <td class="fee-value free">5/5 - Verified licenses</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Game Selection</th>\n'
+        html += '                            <td class="fee-value free">5/5 - Extensive library</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Payment Speed</th>\n'
+        html += '                            <td class="fee-value">4/5 - Fast when verified</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Customer Service</th>\n'
+        html += '                            <td class="fee-value">3/5 - 24/7 chat available</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">User Satisfaction</th>\n'
+        html += '                            <td class="fee-value">3/5 - Mixed reviews</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Mobile Experience</th>\n'
+        html += '                            <td class="fee-value free">5/5 - Excellent apps</td>\n'
+        html += '                        </tr>\n'
+        html += '                    </tbody>\n'
+        html += '                </table>\n\n'
+
+        # CTA within tab
+        html += '                <div class="cta-section">\n'
+        html += f'                    <a href="https://b3i.tech/visit/{platform_id}" class="cta-button" rel="nofollow noopener noreferrer" target="_blank" aria-label="Visit {self._escape_html(casino_name)} (opens in new window)">\n'
+        html += f'                        Explore {self._escape_html(casino_name)}\n'
+        html += '                        <span class="visually-hidden">(opens in new window)</span>\n'
+        html += '                        <span aria-hidden="true">→</span>\n'
+        html += '                    </a>\n'
+        html += '                    <p class="cta-note">New players only • Wagering requirements apply</p>\n'
+        html += '                </div>\n'
+        html += '            </div>\n\n'
+
+        # Bonuses Tab with table and CTA
+        html += f'            <div class="tab-pane" role="tabpanel" id="{platform_id}-bonuses" aria-labelledby="tab-{platform_id}-bonuses">\n'
+        html += f'                <h3>What Welcome Bonus Does {self._escape_html(casino_name)} Offer?</h3>\n'
         bonus_content = tab_content.get('bonuses', '')
         if bonus_content:
-            html += f'                {bonus_content}\n'
+            html += f'                {bonus_content}\n\n'
         else:
-            html += '                <p>Check the casino website for current welcome bonus and promotional offers.</p>\n'
-        html += '            </div>\n'
+            html += '                <p>Check the casino website for current welcome bonus and promotional offers.</p>\n\n'
 
-        # Games Tab
-        html += f'            <div class="tab-pane" id="{platform_id}-games">\n'
-        html += '                <h3>Game Selection</h3>\n'
+        # Add bonus image if available
+        bonus_img = self._get_image_html(images, f'{platform_id}-casino-welcome-bonus-popup.webp')
+        if bonus_img:
+            html += f'                {bonus_img}\n\n'
+
+        # Bonus details table
+        html += '                <table class="fee-table">\n'
+        html += '                    <caption class="visually-hidden">Welcome Bonus Details</caption>\n'
+        html += '                    <tbody>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Bonus Amount</th>\n'
+        html += '                            <td class="fee-value free">100% up to £100</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Minimum Deposit</th>\n'
+        html += '                            <td class="fee-value">£10</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Wagering Requirements</th>\n'
+        html += '                            <td class="fee-value">30x bonus + deposit</td>\n'
+        html += '                        </tr>\n'
+        html += '                        <tr class="fee-row">\n'
+        html += '                            <th scope="row" class="fee-label">Time Limit</th>\n'
+        html += '                            <td class="fee-value">30 days</td>\n'
+        html += '                        </tr>\n'
+        html += '                    </tbody>\n'
+        html += '                </table>\n\n'
+
+        html += '                <p style="margin-top: 16px;"><strong>Important Terms:</strong></p>\n'
+        html += '                <ul>\n'
+        html += '                    <li>Must opt-in before depositing</li>\n'
+        html += '                    <li>Slots contribute 100%, table games vary</li>\n'
+        html += '                    <li>Some games may be excluded</li>\n'
+        html += '                    <li>Verify current terms on casino website</li>\n'
+        html += '                </ul>\n\n'
+
+        html += '                <div class="cta-section">\n'
+        html += f'                    <a href="https://b3i.tech/visit/{platform_id}" class="cta-button" rel="nofollow noopener noreferrer" target="_blank" aria-label="Claim bonus (opens in new window)">\n'
+        html += '                        Claim Your Bonus\n'
+        html += '                        <span class="visually-hidden">(opens in new window)</span>\n'
+        html += '                        <span aria-hidden="true">→</span>\n'
+        html += '                    </a>\n'
+        html += '                    <p class="cta-note">T&Cs apply • 18+ only • BeGambleAware.org</p>\n'
+        html += '                </div>\n'
+        html += '            </div>\n\n'
+
+        # Games Tab with CTA
+        html += f'            <div class="tab-pane" role="tabpanel" id="{platform_id}-games" aria-labelledby="tab-{platform_id}-games">\n'
+        html += f'                <h3 id="games">How Many Games Does {self._escape_html(casino_name)} Have?</h3>\n'
         games_content = tab_content.get('games', '')
         if games_content:
-            html += f'                {games_content}\n'
+            html += f'                {games_content}\n\n'
         else:
-            html += '                <p>Wide selection of slots, table games, and live casino options available.</p>\n'
-        html += '            </div>\n'
+            html += '                <p>Wide selection of slots, table games, and live casino options available.</p>\n\n'
 
-        # Pros & Cons Tab
-        html += f'            <div class="tab-pane" id="{platform_id}-proscons">\n'
+        # Add games image if available
+        games_img = self._get_image_html(images, f'{platform_id}-casino-popular-slot-games-lobby.webp')
+        if games_img:
+            html += f'                {games_img}\n\n'
+
+        html += '                <h4>Game Categories</h4>\n'
+        html += '                <ul>\n'
+        html += '                    <li><strong>Slots:</strong> Wide variety of themes and features</li>\n'
+        html += '                    <li><strong>Live Casino:</strong> Real dealers and immersive gameplay</li>\n'
+        html += '                    <li><strong>Table Games:</strong> Blackjack, roulette, baccarat variants</li>\n'
+        html += '                    <li><strong>Jackpots:</strong> Progressive and fixed jackpot games</li>\n'
+        html += '                </ul>\n\n'
+
+        html += '                <div class="cta-section">\n'
+        html += f'                    <a href="https://b3i.tech/visit/{platform_id}" class="cta-button" rel="nofollow noopener noreferrer" target="_blank" aria-label="Explore games (opens in new window)">\n'
+        html += '                        Explore All Games\n'
+        html += '                        <span class="visually-hidden">(opens in new window)</span>\n'
+        html += '                        <span aria-hidden="true">→</span>\n'
+        html += '                    </a>\n'
+        html += '                    <p class="cta-note">1,000+ games • High RTP • Demo mode available</p>\n'
+        html += '                </div>\n'
+        html += '            </div>\n\n'
+
+        # Pros & Cons Tab with follow-up paragraph
+        html += f'            <div class="tab-pane" role="tabpanel" id="{platform_id}-proscons" aria-labelledby="tab-{platform_id}-proscons">\n'
         html += '                <div class="proscons-grid">\n'
         html += '                    <div class="pros-section">\n'
         html += '                        <h4><span aria-hidden="true">✓</span> Pros</h4>\n'
@@ -1258,6 +1585,8 @@ class PageBuilder:
                 html += f'                            <li>{self._escape_html(pro)}</li>\n'
         else:
             html += '                            <li>Licensed and regulated</li>\n'
+            html += '                            <li>Wide game selection</li>\n'
+            html += '                            <li>Secure platform</li>\n'
         html += '                        </ul>\n'
         html += '                    </div>\n'
         html += '                    <div class="cons-section">\n'
@@ -1267,10 +1596,14 @@ class PageBuilder:
             for con in cons:
                 html += f'                            <li>{self._escape_html(con)}</li>\n'
         else:
+            html += '                            <li>Wagering requirements apply</li>\n'
+            html += '                            <li>Verification required</li>\n'
             html += '                            <li>Terms and conditions apply</li>\n'
         html += '                        </ul>\n'
         html += '                    </div>\n'
-        html += '                </div>\n'
+        html += '                </div>\n\n'
+
+        html += f'                <p style="margin-top: 1.5rem;">{self._escape_html(casino_name)} presents a balance of strengths and areas for consideration. The {self._escape_html(rating)} rating reflects the overall evaluation of licensing, games, payments, and user experience.</p>\n'
         html += '            </div>\n'
 
         html += '        </div>\n'
@@ -1726,3 +2059,54 @@ class PageBuilder:
         text = re.sub(r'[^a-z0-9]+', '-', text)
         text = text.strip('-')
         return text
+
+    def _get_image(self, images: Dict, filename: str) -> Dict:
+        """Look up image by filename from images dictionary"""
+        if not images:
+            return None
+
+        # Try direct filename lookup
+        if filename in images:
+            return images[filename]
+
+        # Try case-insensitive lookup
+        filename_lower = filename.lower()
+        for key, img in images.items():
+            if key.lower() == filename_lower:
+                return img
+
+        return None
+
+    def _get_image_html(self, images: Dict, filename: str, width: int = None, height: int = None, loading: str = "lazy") -> str:
+        """Generate HTML for an image with proper alt text and caption"""
+        img = self._get_image(images, filename)
+
+        if not img:
+            # Fallback to hardcoded URL if image not found in dictionary
+            url = f"https://b3i.tech/wp-content/uploads/2025/11/{filename}"
+            alt = filename.replace('-', ' ').replace('.webp', '').replace('.png', '').title()
+            return f'<img src="{url}" alt="{alt}" loading="{loading}" />'
+
+        url = img.get('url', '')
+        alt = img.get('metadata', {}).get('_wp_attachment_image_alt', img.get('title', ''))
+        caption = img.get('metadata', {}).get('caption', '')
+
+        # Build image tag
+        img_attrs = f'src="{url}" alt="{self._escape_html(alt)}"'
+        if width:
+            img_attrs += f' width="{width}"'
+        if height:
+            img_attrs += f' height="{height}"'
+        img_attrs += f' loading="{loading}"'
+
+        img_html = f'<img {img_attrs} />'
+
+        # Wrap in figure if there's a caption
+        if caption:
+            html = '<figure style="margin: 1.5rem 0;">\n'
+            html += f'    {img_html}\n'
+            html += f'    <figcaption style="text-align: center; font-size: 0.875rem; color: #6e6e73; margin-top: 0.5rem;">{self._escape_html(caption)}</figcaption>\n'
+            html += '</figure>'
+            return html
+
+        return img_html
