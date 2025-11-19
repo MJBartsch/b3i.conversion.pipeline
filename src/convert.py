@@ -27,19 +27,43 @@ def load_data_files():
     images = {}
     affiliate_links = {}
 
-    # Load images.json
-    images_path = Path('data/images.json')
-    if images_path.exists():
-        with open(images_path, 'r', encoding='utf-8') as f:
-            images_data = json.load(f)
-            images = {img['title']: img for img in images_data}
+    # Load images.json (try root directory first, then data/)
+    images_paths = [Path('images.json'), Path('data/images.json')]
+    for images_path in images_paths:
+        if images_path.exists():
+            with open(images_path, 'r', encoding='utf-8') as f:
+                images_data = json.load(f)
+                # Create mapping by both title and filename for easy lookup
+                if 'attachments' in images_data:
+                    for img in images_data['attachments']:
+                        # Map by title
+                        images[img['title']] = img
+                        # Map by filename (extract from URL)
+                        if 'url' in img:
+                            filename = img['url'].split('/')[-1]
+                            images[filename] = img
+                else:
+                    # Old format
+                    images = {img['title']: img for img in images_data}
+            break
 
-    # Load affiliate-links.json
-    links_path = Path('data/affiliate-links.json')
-    if links_path.exists():
-        with open(links_path, 'r', encoding='utf-8') as f:
-            links_data = json.load(f)
-            affiliate_links = {link['casino_name']: link for link in links_data}
+    # Load affiliate-links.json (try root directory first, then data/)
+    links_paths = [Path('affiliate-links.json'), Path('data/affiliate-links.json')]
+    for links_path in links_paths:
+        if links_path.exists():
+            with open(links_path, 'r', encoding='utf-8') as f:
+                links_data = json.load(f)
+                # Handle both formats: direct array or {affiliate_links: [...]}
+                if isinstance(links_data, dict) and 'affiliate_links' in links_data:
+                    links_list = links_data['affiliate_links']
+                else:
+                    links_list = links_data
+
+                # Map by title and slug for easy lookup
+                for link in links_list:
+                    affiliate_links[link['title']] = link
+                    affiliate_links[link['slug']] = link
+            break
 
     return images, affiliate_links
 
