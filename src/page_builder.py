@@ -100,7 +100,9 @@ class PageBuilder:
             'tab_content': self._extract_tab_content(sections),
             'content_sections': sections,  # All sections for flexible rendering
             'faqs': self._extract_faqs(sections),
-            'references': self._extract_references(sections)
+            'references': self._extract_references(sections),
+            'images': images or {},  # Store images dictionary for lookups
+            'affiliate_links': affiliate_links or {}  # Store affiliate links
         }
 
         return content_map
@@ -1199,7 +1201,13 @@ class PageBuilder:
         html += '            </div>\n'
         html += '            <div class="qv-category-body">\n'
         html += '                <div class="qv-platform-logo">\n'
-        html += f'                    <img src="https://b3i.tech/wp-content/uploads/2025/11/{platform_id}-logo.png" alt="{self._escape_html(casino_name)} logo" title="{self._escape_html(casino_name)}" width="90" height="90" loading="eager" />\n'
+        # Get logo image from content_map
+        images = content_map.get('images', {})
+        logo_img = self._get_image_html(images, f'{platform_id}-logo.png', width=90, height=90, loading='eager')
+        if '<img' in logo_img:
+            # Add title attribute
+            logo_img = logo_img.replace('<img', f'<img title="{self._escape_html(casino_name)}"')
+        html += f'                    {logo_img}\n'
         html += '                </div>\n'
         html += '                <div class="qv-winner-link">\n'
         html += f'                    <h3 class="qv-winner-name" style="margin-top: 0;">\n'
@@ -1344,10 +1352,11 @@ class PageBuilder:
         rating = casino_info.get('rating', '0/10')
         platform_id = self._slugify(casino_name)
 
-        # Get tab content and pros/cons
+        # Get tab content, pros/cons, and images
         tab_content = content_map.get('tab_content', {})
         pros = casino_info.get('pros', [])
         cons = casino_info.get('cons', [])
+        images = content_map.get('images', {})
 
         # Extract rating number for stars
         try:
@@ -1362,11 +1371,15 @@ class PageBuilder:
 
         # Card header with banner image
         html = '<div class="platform-card" id="detailed-review">\n'
-        html += f'    <div class="card-header" style="--bg-image: url(\'https://b3i.tech/wp-content/uploads/2025/11/{platform_id}-banner.jpg\'); background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url(\'https://b3i.tech/wp-content/uploads/2025/11/{platform_id}-banner.jpg\'); background-size: cover; background-position: center;">\n'
+        banner_url = f'https://b3i.tech/wp-content/uploads/2025/11/{platform_id}-banner.jpg'
+        html += f'    <div class="card-header" style="--bg-image: url(\'{banner_url}\'); background-image: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), url(\'{banner_url}\'); background-size: cover; background-position: center;">\n'
         html += f'        <div class="platform-rating"><span role="img" aria-label="{self._escape_html(rating)} stars">{stars}</span> {self._escape_html(rating)}</div>\n'
         html += '        <div class="header-content">\n'
         html += '            <div class="platform-logo">\n'
-        html += f'                <img src="https://b3i.tech/wp-content/uploads/2025/11/{platform_id}-logo.png" alt="{self._escape_html(casino_name)} logo" title="{self._escape_html(casino_name)}" width="120" height="120" loading="lazy" />\n'
+        logo_img = self._get_image_html(images, f'{platform_id}-logo.png', width=120, height=120, loading='lazy')
+        if '<img' in logo_img:
+            logo_img = logo_img.replace('<img', f'<img title="{self._escape_html(casino_name)}"')
+        html += f'                {logo_img}\n'
         html += '            </div>\n'
         html += f'            <p class="platform-tagline">{self._escape_html(casino_name)} • Comprehensive Review</p>\n'
         html += '        </div>\n'
@@ -1426,6 +1439,11 @@ class PageBuilder:
         else:
             html += f'                <p>{self._escape_html(casino_name)} is a licensed online casino offering a wide range of games and features.</p>\n\n'
 
+        # Add overview image if available
+        overview_img = self._get_image_html(images, f'{platform_id}-uk-deposit-bonus-promo.webp')
+        if overview_img:
+            html += f'                {overview_img}\n\n'
+
         # Rating breakdown table
         html += '                <p><strong>Rating Breakdown:</strong></p>\n'
         html += '                <table class="fee-table">\n'
@@ -1478,6 +1496,11 @@ class PageBuilder:
         else:
             html += '                <p>Check the casino website for current welcome bonus and promotional offers.</p>\n\n'
 
+        # Add bonus image if available
+        bonus_img = self._get_image_html(images, f'{platform_id}-casino-welcome-bonus-popup.webp')
+        if bonus_img:
+            html += f'                {bonus_img}\n\n'
+
         # Bonus details table
         html += '                <table class="fee-table">\n'
         html += '                    <caption class="visually-hidden">Welcome Bonus Details</caption>\n'
@@ -1527,6 +1550,11 @@ class PageBuilder:
             html += f'                {games_content}\n\n'
         else:
             html += '                <p>Wide selection of slots, table games, and live casino options available.</p>\n\n'
+
+        # Add games image if available
+        games_img = self._get_image_html(images, f'{platform_id}-casino-popular-slot-games-lobby.webp')
+        if games_img:
+            html += f'                {games_img}\n\n'
 
         html += '                <h4>Game Categories</h4>\n'
         html += '                <ul>\n'
@@ -2031,3 +2059,54 @@ class PageBuilder:
         text = re.sub(r'[^a-z0-9]+', '-', text)
         text = text.strip('-')
         return text
+
+    def _get_image(self, images: Dict, filename: str) -> Dict:
+        """Look up image by filename from images dictionary"""
+        if not images:
+            return None
+
+        # Try direct filename lookup
+        if filename in images:
+            return images[filename]
+
+        # Try case-insensitive lookup
+        filename_lower = filename.lower()
+        for key, img in images.items():
+            if key.lower() == filename_lower:
+                return img
+
+        return None
+
+    def _get_image_html(self, images: Dict, filename: str, width: int = None, height: int = None, loading: str = "lazy") -> str:
+        """Generate HTML for an image with proper alt text and caption"""
+        img = self._get_image(images, filename)
+
+        if not img:
+            # Fallback to hardcoded URL if image not found in dictionary
+            url = f"https://b3i.tech/wp-content/uploads/2025/11/{filename}"
+            alt = filename.replace('-', ' ').replace('.webp', '').replace('.png', '').title()
+            return f'<img src="{url}" alt="{alt}" loading="{loading}" />'
+
+        url = img.get('url', '')
+        alt = img.get('metadata', {}).get('_wp_attachment_image_alt', img.get('title', ''))
+        caption = img.get('metadata', {}).get('caption', '')
+
+        # Build image tag
+        img_attrs = f'src="{url}" alt="{self._escape_html(alt)}"'
+        if width:
+            img_attrs += f' width="{width}"'
+        if height:
+            img_attrs += f' height="{height}"'
+        img_attrs += f' loading="{loading}"'
+
+        img_html = f'<img {img_attrs} />'
+
+        # Wrap in figure if there's a caption
+        if caption:
+            html = '<figure style="margin: 1.5rem 0;">\n'
+            html += f'    {img_html}\n'
+            html += f'    <figcaption style="text-align: center; font-size: 0.875rem; color: #6e6e73; margin-top: 0.5rem;">{self._escape_html(caption)}</figcaption>\n'
+            html += '</figure>'
+            return html
+
+        return img_html
